@@ -39,3 +39,8 @@ dashboard/*.exe
 
 # Web dashboard secrets (copy from web/.env.example)
 web/.env
+
+# Piper TTS binary + voice models (installed via `npm run setup:tts` from web/)
+web/server/tts/*
+!web/server/tts/.gitkeep
+web/ui/tsconfig.tsbuildinfo

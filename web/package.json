@@ -11,7 +11,8 @@
     "build:ui": "npm --prefix ui run build",
     "start": "node server/dist/index.js",
     "lint": "eslint .",
-    "typecheck": "tsc -p server/tsconfig.json --noEmit"
+    "typecheck": "tsc -p server/tsconfig.json --noEmit",
+    "setup:tts": "node scripts/setup-tts.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.1",

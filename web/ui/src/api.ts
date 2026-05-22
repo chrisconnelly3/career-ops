@@ -1,3 +1,5 @@
+export type ScreenerVerdict = "PASS" | "FAIL" | "UNKNOWN";
+
 export type CareerApplication = {
   number: number;
   date: string;
@@ -11,6 +13,8 @@ export type CareerApplication = {
   reportPath: string;
   notes: string;
   jobUrl?: string;
+  screenerVerdict?: ScreenerVerdict;
+  screenerAttempts?: number;
 };
 
 export type PipelineMetrics = {
@@ -125,5 +129,48 @@ export function revealPdf(filename: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filename }),
   });
+}
+
+export function regeneratePdf(reportNum: string) {
+  return api<{ ok: true; jobId: string }>("/api/pdf/regenerate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reportNum }),
+  });
+}
+
+export function readScreener(reportNum: string) {
+  return api<{ ok: true; markdown: string }>(
+    `/api/screener/raw?reportNum=${encodeURIComponent(reportNum)}`,
+  );
+}
+
+export function saveInterviewTranscript(reportNumber: string, transcript: string) {
+  return api<{ ok: true; path: string }>("/api/interview/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reportNumber, transcript }),
+  });
+}
+
+export function getTtsStatus() {
+  return api<{ ok: true; available: boolean; voice?: string; reason?: string }>("/api/tts/status");
+}
+
+/** Returns a blob URL the caller can hand to an <audio> element. Caller is
+ *  responsible for revoking the URL with URL.revokeObjectURL() when done. */
+export async function speakWithPiper(text: string, signal?: AbortSignal): Promise<string> {
+  const res = await fetch("/api/tts/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 

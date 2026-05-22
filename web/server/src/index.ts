@@ -1,6 +1,11 @@
 import path from "node:path";
 import dotenv from "dotenv";
 
+// Drop empty inherited values (some terminals export ANTHROPIC_API_KEY="" which
+// would otherwise block dotenv from loading the real value from web/.env).
+for (const k of ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"]) {
+  if (process.env[k] === "") delete process.env[k];
+}
 dotenv.config({ path: path.resolve(__dirname, "..", "..", ".env") });
 
 import express from "express";
@@ -12,6 +17,9 @@ import { computeMetrics, parseApplications, statusPriority } from "./lib/applica
 import { updateApplicationStatusByReportNumber } from "./lib/statusUpdate";
 import { enqueueJob, getJob, listJobs } from "./lib/jobQueue";
 import { listReports, readReport } from "./lib/reports";
+import { readScreenerForReport } from "./lib/screenerLookup";
+import { loadReportContext, saveInterviewTranscript } from "./lib/interview";
+import { getTtsStatus, speakWithPiper } from "./lib/tts";
 import { findPdfForReport, getPdfAbsolutePath, revealPdfInExplorer } from "./lib/pdfLookup";
 import { regeneratePdfForReport } from "./lib/regeneratePdf";
 import { runEvaluateJob } from "./lib/runEvaluateJob";
@@ -158,6 +166,24 @@ app.post("/api/jobs/pipeline", async (req, res) => {
   res.json({ ok: true, jobId: job.id });
 });
 
+app.get("/api/screener/raw", async (req, res) => {
+  const qp = z.object({ reportNum: z.string().min(1) }).safeParse(req.query);
+  if (!qp.success) {
+    res.status(400).json({ ok: false, error: qp.error.flatten() });
+    return;
+  }
+  try {
+    const md = await readScreenerForReport(qp.data.reportNum);
+    if (md == null) {
+      res.status(404).json({ ok: false, error: "No screener verdict file found for that report number" });
+      return;
+    }
+    res.json({ ok: true, markdown: md });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 app.get("/api/pdf/info", async (req, res) => {
   const qp = z.object({ reportNum: z.string().min(1) }).safeParse(req.query);
   if (!qp.success) {
@@ -220,6 +246,7 @@ app.post("/api/chat", async (req, res) => {
         content: z.string().min(1),
       })
     ).min(1).max(100),
+    reportNumber: z.string().min(1).optional(),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -233,7 +260,65 @@ app.post("/api/chat", async (req, res) => {
     return;
   }
 
-  await streamChat(parsed.data.mode as ChatMode, parsed.data.messages, res);
+  let ctx: import("./lib/chat").ChatContext | undefined;
+  if (parsed.data.reportNumber) {
+    try {
+      ctx = await loadReportContext(parsed.data.reportNumber);
+    } catch (e) {
+      res.status(404).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+  }
+
+  if (parsed.data.mode === "decision-maker" && !ctx) {
+    res.status(400).json({ ok: false, error: "decision-maker mode requires reportNumber" });
+    return;
+  }
+
+  await streamChat(parsed.data.mode as ChatMode, parsed.data.messages, res, ctx);
+});
+
+app.get("/api/tts/status", async (_req, res) => {
+  const status = await getTtsStatus();
+  if (status.available) {
+    res.json({ ok: true, available: true, voice: status.voice });
+  } else {
+    res.json({ ok: true, available: false, reason: status.reason });
+  }
+});
+
+app.post("/api/tts/speak", async (req, res) => {
+  const schema = z.object({ text: z.string().min(1).max(8000) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    await speakWithPiper(parsed.data.text, res);
+  } catch (e) {
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+});
+
+app.post("/api/interview/save", async (req, res) => {
+  const schema = z.object({
+    reportNumber: z.string().min(1),
+    transcript: z.string().min(1).max(500_000),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const saved = await saveInterviewTranscript(parsed.data.reportNumber, parsed.data.transcript);
+    res.json({ ok: true, path: saved.relPath });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+  }
 });
 
 const port = Number(process.env.PORT || 8787);

@@ -59,12 +59,50 @@ If the company cannot be identified from the JD, fall back to `#1a1a2e` / `#2d6a
 7. Playwright renders PDF with 0.6in margins, letter (US/Canada) or A4 (rest of world).
 8. Output: `output/cv-{slug}-{num}.pdf`.
 
-## Keyword injection (ethical)
+## Bullet rewriting — The Recruiter
 
-Reformulate real experience using the JD's vocabulary. Never invent skills.
+Every experience bullet in the rendered CV is rewritten by **The Recruiter**: a professional
+resume editor that translates real experience into the exact language Meta, Google, and
+Fortune 500 hiring managers are trained to look for.
 
-- JD says "RAG pipelines" and CV says "LLM workflows with retrieval" → rewrite to "RAG pipeline design and LLM orchestration workflows".
-- JD says "stakeholder management" and CV says "collaborated with team" → rewrite to "stakeholder management across engineering, operations, and business".
+### The Google XYZ formula (non-negotiable)
+
+Every bullet must follow: **"Accomplished X, as measured by Y, by doing Z."**
+
+- **X** = the outcome (what changed because of the candidate)
+- **Y** = the metric (the measurable proof)
+- **Z** = the method (what they specifically did)
+
+**Example:**
+- BEFORE: *Managed marketing team and ran campaigns.*
+- AFTER: *Increased qualified pipeline 47% (X), measured by SQL volume in Salesforce (Y), by launching account-based campaigns targeting Fortune 500 finance buyers (Z).*
+
+### ALWAYS
+
+- Apply XYZ to every bullet. Lead with outcome, end with method.
+- Weave in 1–2 keywords from the Scout's keyword gap list (when a report is provided) — natural integration, no stuffing.
+- Use strong action verbs (Led, Launched, Scaled, Architected, Negotiated, Shipped).
+- Front-load the bullet with the metric when one exists.
+
+### NEVER
+
+- Invent metrics. If `cv.md` has no number for a bullet, keep the bullet qualitative — do **not** fabricate "increased by 30%."
+- Replace concrete duties with vague accomplishments ("improved processes," "drove results"). Be specific.
+- Soften strong verbs to be polite.
+- Add accomplishments not present in `cv.md` or `_profile.md`.
+- Stuff keywords. If a JD term does not fit a bullet honestly, leave it out and place it in Competencies or Skills instead.
+
+### Reformulation examples (ethical keyword injection)
+
+- JD says "RAG pipelines" + CV says "LLM workflows with retrieval" → "RAG pipeline design and LLM orchestration workflows."
+- JD says "stakeholder management" + CV says "collaborated with team" → "stakeholder management across engineering, operations, and business."
+
+### Scout gap list (when present)
+
+If the evaluation report is passed in, locate its **Keyword Gap** table (block B.3). Every
+HIGH-impact phrase in that table must appear at least once in the rewritten CV — ideally in
+the first half-page (Summary, Competencies, or first bullet of the most recent role). Every
+MED-impact phrase should appear at least once anywhere ATS-readable.
 
 ## Placeholder reference
 

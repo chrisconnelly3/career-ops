@@ -141,10 +141,22 @@ export async function runEvaluateJob(
     "## F) Interview Prep",
     "## Scoring Summary",
     "",
+    "BLOCK B IS SCOUT-FLAVORED (critical):",
+    "- B plays the role of The Scout: a forensic talent analyst. Be ruthless, do not grade on a curve, quote specific cv.md lines for every gap, distinguish 'missing entirely' vs 'present but weak', never invent skills.",
+    "- B MUST include these sub-sections in order, with these exact headings:",
+    "  ### B.1 — Match Table   (Requirement | CV Evidence (quoted) | Strength)",
+    "  ### B.2 — Fit Sub-Scores   (table: Keyword Match / Skills Alignment / Experience Relevance / Seniority Signal, each X/25, with reasoning column)",
+    "  ### B.3 — Keyword Gap   (top 10 JD phrases missing/buried in CV. Columns: JD Phrase | Count in JD | Closest CV Reference (or 'none') | Impact (HIGH/MED/LOW))",
+    "  ### B.4 — Skills Gap   (top 5 skills/tools/certs the JD requires that CV does not claim; mark each as credibly addable or honest gap)",
+    "  ### B.5 — Positioning Gaps   (top 3 story disconnects between CV and role; quote offending CV lines)",
+    "  ### B.6 — Gap Mitigation   (per gap: blocker? adjacent? portfolio? concrete mitigation)",
+    "  ### B.7 — Ruthless Verdict   (one paragraph. If CV is wrong / under / over for this role, say it.)",
+    "- The B.3 Keyword Gap table is consumed downstream by the PDF generation step — be specific and quote real JD phrases verbatim.",
+    "",
     "SCORING SUMMARY TABLE (must appear at the end):",
     "| Dimension | Score | Notes |",
-    "Dimensions: Match with CV, North Star alignment, Comp, Cultural signals",
-    "Each score is X.X out of 5.",
+    "Dimensions (in this order): Keyword Match, Skills Alignment, Experience Relevance, Seniority Signal, North Star alignment, Comp, Cultural signals.",
+    "Each score is X.X out of 5. The first four are the B.2 sub-scores normalized from /25 to /5 (divide by 5).",
     "",
     "TONE: professional analyst delivering a brief to a hiring committee. Concise, structured, opinionated."
   ].join("\n");
@@ -230,11 +242,23 @@ export async function runEvaluateJob(
     num,
     jd,
     reportRel,
+    reportPath,
     log: ctx.log,
     setProgress: ctx.setProgress
   });
   await markPdfGenerated(num);
   ctx.log(`PDF generated: ${pdf.pdfPath}`);
+
+  // Append the Screener verdict line to the report so the dashboard surfaces it
+  // next to the eval (the PDF column in the tracker only shows ✅/❌).
+  if (pdf.screenerVerdict) {
+    const appendLine = `\n\n**ATS Screener:** ${pdf.screenerVerdict} (${pdf.screenerAttempts} attempt${pdf.screenerAttempts === 1 ? "" : "s"})${pdf.screenerPath ? ` — see \`${path.relative(repoRoot, pdf.screenerPath).replace(/\\/g, "/")}\`` : ""}\n`;
+    try {
+      await fs.appendFile(reportPath, appendLine, "utf-8");
+    } catch (e) {
+      ctx.log(`Could not append Screener verdict to report: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   ctx.setProgress("Done");
   return { reportRel, reportPath, tsvPath, pdf };

@@ -81,6 +81,7 @@ export async function regeneratePdfForReport(reportNum: string, ctx: Ctx) {
     num: paddedNum,
     jd,
     reportRel: path.relative(path.resolve(reportsDir, ".."), reportPath).replace(/\\/g, "/"),
+    reportPath,
     log: ctx.log,
     setProgress: ctx.setProgress,
   });

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import { createEvaluateJob, createPipelineJob, createScanJob, getApplications, getJob, patchStatus, readReport, runScript } from "./api";
+import { createEvaluateJob, createPipelineJob, createScanJob, getApplications, getJob, patchStatus, readReport, readScreener, regeneratePdf, runScript } from "./api";
 import type { CareerApplication, Job, ScanJobResult } from "./api";
 import { Chat } from "./Chat";
+import type { InterviewContext } from "./Chat";
 import { ReportView } from "./ReportView";
 
 type View = "pipeline" | "evaluate" | "report" | "chat";
@@ -80,6 +81,7 @@ export function App() {
   const [job, setJob] = useState<Job | null>(null);
   const [jobPoll, setJobPoll] = useState<number | null>(null);
   const [showJobLogs, setShowJobLogs] = useState(false);
+  const [interviewContext, setInterviewContext] = useState<InterviewContext | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -164,6 +166,41 @@ export function App() {
     setView("report");
     const data = await readReport(app.reportPath);
     setReportMd(data.markdown);
+  }
+
+  async function openScreener(app: CareerApplication) {
+    if (!app.reportNumber) return;
+    try {
+      const data = await readScreener(app.reportNumber);
+      setReportPath(`Screener verdict — ${app.company} (#${app.reportNumber})`);
+      setReportMd(data.markdown);
+      setView("report");
+    } catch (e) {
+      // Most likely no screener .md exists yet for older reports — fall back to the report.
+      void openReport(app);
+    }
+  }
+
+  async function rerunPdf(app: CareerApplication) {
+    if (!app.reportNumber) return;
+    const created = await regeneratePdf(app.reportNumber);
+    setJobId(created.jobId);
+    setJob(null);
+  }
+
+  function startInterview(app: CareerApplication) {
+    if (!app.reportNumber || !app.company) return;
+    setInterviewContext({
+      reportNumber: app.reportNumber,
+      company: app.company,
+      role: app.role || "(unknown role)",
+    });
+    setView("chat");
+  }
+
+  function exitInterview() {
+    setInterviewContext(null);
+    setView("pipeline");
   }
 
   async function updateStatus(app: CareerApplication, status: string) {
@@ -374,6 +411,7 @@ export function App() {
                         </span>
                       </th>
                       <Th>Status</Th>
+                      <Th>ATS</Th>
                       <Th>Actions</Th>
                     </tr>
                   </thead>
@@ -401,6 +439,13 @@ export function App() {
                           </select>
                         </Td>
                         <Td>
+                          <ScreenerBadge
+                            verdict={a.screenerVerdict}
+                            attempts={a.screenerAttempts}
+                            onClick={() => void openScreener(a)}
+                          />
+                        </Td>
+                        <Td>
                           <div className="flex flex-wrap gap-2">
                             {a.jobUrl && (
                               <a
@@ -420,13 +465,31 @@ export function App() {
                                 View report
                               </button>
                             )}
+                            {a.reportNumber && (
+                              <button
+                                onClick={() => void rerunPdf(a)}
+                                title="Re-run Recruiter + Screener and regenerate the PDF for this report"
+                                className="rounded-xl bg-zinc-950/60 px-3 py-2 text-xs text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-zinc-950/80"
+                              >
+                                Re-run
+                              </button>
+                            )}
+                            {a.reportNumber && (
+                              <button
+                                onClick={() => startInterview(a)}
+                                title="Open a Decision Maker mock interview scoped to this role"
+                                className="rounded-xl bg-fuchsia-500/15 px-3 py-2 text-xs text-fuchsia-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)] hover:bg-fuchsia-500/25"
+                              >
+                                Interview prep
+                              </button>
+                            )}
                           </div>
                         </Td>
                       </tr>
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-8 text-center text-zinc-400">
+                        <td colSpan={8} className="p-8 text-center text-zinc-400">
                           No results. Run an evaluation first.
                         </td>
                       </tr>
@@ -477,7 +540,9 @@ export function App() {
             </section>
           )}
 
-          {view === "chat" && <Chat />}
+          {view === "chat" && (
+            <Chat interviewContext={interviewContext} onExitInterview={exitInterview} />
+          )}
 
           {view === "report" && (
             <section>
@@ -593,6 +658,43 @@ function AvatarIllustration() {
         <circle cx="48" cy="14" r="4" fill="#22d3ee" opacity="0.9" />
       </svg>
     </div>
+  );
+}
+
+function ScreenerBadge(props: {
+  verdict?: "PASS" | "FAIL" | "UNKNOWN";
+  attempts?: number;
+  onClick: () => void;
+}) {
+  const { verdict, attempts, onClick } = props;
+  if (!verdict) {
+    return <span className="text-xs text-zinc-500">—</span>;
+  }
+  const cls =
+    verdict === "PASS"
+      ? "bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+      : verdict === "FAIL"
+      ? "bg-rose-500/20 text-rose-200 hover:bg-rose-500/30"
+      : "bg-zinc-700/40 text-zinc-200 hover:bg-zinc-700/60";
+  const label = verdict === "PASS" ? "PASS" : verdict === "FAIL" ? "FAIL" : "?";
+  const detail =
+    attempts && attempts > 1
+      ? `Click to see why (${attempts} attempts)`
+      : "Click to see Screener details";
+  return (
+    <button
+      onClick={onClick}
+      title={detail}
+      className={classNames(
+        "inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-semibold tracking-wide shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)] transition",
+        cls,
+      )}
+    >
+      <span>{label}</span>
+      {attempts && attempts > 1 && (
+        <span className="text-[10px] font-normal opacity-80">×{attempts}</span>
+      )}
+    </button>
   );
 }
 

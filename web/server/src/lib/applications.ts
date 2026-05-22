@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { userPaths, batchPaths } from "./paths";
 
+export type ScreenerVerdict = "PASS" | "FAIL" | "UNKNOWN";
+
 export type CareerApplication = {
   number: number; // row index (1-based within file parsing)
   date: string;
@@ -16,6 +18,10 @@ export type CareerApplication = {
   reportPath: string;
   notes: string;
   jobUrl?: string;
+  /** Result of the last ATS Screener run, derived from the report footer or screen-*.md file. */
+  screenerVerdict?: ScreenerVerdict;
+  /** Number of Screener attempts in the most recent run (1 or 2). */
+  screenerAttempts?: number;
 };
 
 export type PipelineMetrics = {
@@ -31,6 +37,7 @@ const reReportLink = /\[(\d+)\]\(([^)]+)\)/;
 const reScoreValue = /(\d+\.?\d*)\/5/;
 const reReportURL = /(^|\n)\*\*URL:\*\*\s*(https?:\/\/\S+)/m;
 const reBatchID = /(^|\n)\*\*Batch ID:\*\*\s*(\d+)/m;
+const reScreenerLine = /\*\*ATS Screener:\*\*\s*(PASS|FAIL|UNKNOWN)\s*\((\d+)\s*attempt/i;
 
 function normalizeCompany(name: string) {
   let s = name.toLowerCase().trim();
@@ -184,6 +191,19 @@ async function enrichJobUrls(apps: CareerApplication[]) {
     }
 
     let header = reportContent.slice(0, 1000);
+
+    // The Screener verdict line is appended near the tail of the report — scan the
+    // last 2KB rather than the header.
+    const tail = reportContent.slice(Math.max(0, reportContent.length - 2000));
+    const screenMatch = reScreenerLine.exec(tail);
+    if (screenMatch) {
+      const verdictRaw = (screenMatch[1] ?? "").toUpperCase();
+      app.screenerVerdict = (verdictRaw === "PASS" || verdictRaw === "FAIL" || verdictRaw === "UNKNOWN")
+        ? (verdictRaw as ScreenerVerdict)
+        : undefined;
+      const attempts = Number.parseInt(screenMatch[2] ?? "", 10);
+      if (!Number.isNaN(attempts)) app.screenerAttempts = attempts;
+    }
 
     const urlMatch = reReportURL.exec(header);
     if (urlMatch?.[2]) {

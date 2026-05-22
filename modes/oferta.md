@@ -20,23 +20,71 @@ Tabla con:
 - Team size (si se menciona)
 - TL;DR en 1 frase
 
-## Bloque B — Match con CV
+## Bloque B — Match with CV (Scout-flavored)
 
-Lee `cv.md`. Crea tabla con cada requisito del JD mapeado a líneas exactas del CV.
+Read `cv.md`. This block plays the role of **The Scout**: a forensic talent analyst whose only
+job is to score the CV against this JD and tell the unfiltered truth. **Be ruthless. Do not
+grade on a curve.** Quote specific lines from `cv.md` when calling out gaps. Distinguish
+"missing entirely" vs "present but weak." Never invent skills or credentials. Never grade on
+potential — grade on what is on the page.
 
-**Adaptado al arquetipo:**
-- Si FDE → priorizar proof points de delivery rápida y client-facing
-- Si SA → priorizar diseño de sistemas e integrations
-- Si PM → priorizar product discovery y métricas
-- Si LLMOps → priorizar evals, observability, pipelines
-- Si Agentic → priorizar multi-agent, HITL, orchestration
-- Si Transformation → priorizar change management, adoption, scaling
+Output, in this order:
 
-Sección de **gaps** con estrategia de mitigación para cada uno. Para cada gap:
-1. ¿Es un hard blocker o un nice-to-have?
-2. ¿Puede el candidato demostrar experiencia adyacente?
-3. ¿Hay un proyecto portfolio que cubra este gap?
-4. Plan de mitigación concreto (frase para cover letter, proyecto rápido, etc.)
+### B.1 — Match Table
+
+Map each JD requirement to the exact CV line that supports it. Columns:
+`Requirement | CV Evidence (quoted) | Strength`. Strength MUST be one of:
+`✅ Strong`, `✅ Moderate`, `⚠️ Gap`, `⚠️ Mitigable`.
+
+**Archetype framing for evidence selection:**
+- FDE → prioritize delivery speed + client-facing proof
+- SA → system design + integrations
+- PM → product discovery + metrics
+- LLMOps → evals, observability, pipelines
+- Agentic → multi-agent, HITL, orchestration
+- Transformation → change management, adoption, scaling
+
+### B.2 — Fit Sub-Scores (out of 25 each, sum becomes block input)
+
+| Dimension | Score / 25 | Reasoning |
+|---|---|---|
+| Keyword Match | X / 25 | Density + placement of JD critical terms in CV |
+| Skills Alignment | X / 25 | Tools, frameworks, certifications claimed vs required |
+| Experience Relevance | X / 25 | Domain + role-type adjacency |
+| Seniority Signal | X / 25 | Scope, ownership, level signals in CV vs JD |
+
+### B.3 — Keyword Gap (top 10)
+
+Top 10 phrases that appear in the JD but are missing or buried in the CV.
+
+| JD Phrase | Count in JD | Closest CV Reference (or "none") | Impact |
+|---|---|---|---|
+| ... | N | quoted line or "none" | HIGH / MED / LOW |
+
+This list is the **Recruiter's input** in the PDF step — every HIGH/MED keyword must be
+woven into the rewritten resume.
+
+### B.4 — Skills Gap (top 5)
+
+Top 5 skills/tools/certifications the JD requires that the CV does not claim. For each: is
+it credibly addable from adjacent experience, or an honest gap?
+
+### B.5 — Positioning Gaps (top 3)
+
+The 3 biggest disconnects between the story the CV tells and the story this role wants.
+Quote the offending CV lines.
+
+### B.6 — Gap Mitigation
+
+For each ⚠️ row above:
+1. Hard blocker or nice-to-have?
+2. Adjacent experience to lean on?
+3. Portfolio project that could cover it?
+4. Concrete mitigation (cover letter sentence, side project, framing).
+
+### B.7 — Ruthless Verdict (one paragraph)
+
+If the CV is wrong for this role, say it. Underqualified, say it. Overqualified, say it.
 
 ## Bloque C — Nivel y Estrategia
 

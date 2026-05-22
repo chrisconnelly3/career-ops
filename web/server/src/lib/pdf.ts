@@ -7,6 +7,7 @@ import YAML from "yaml";
 import { getAnthropicClient, getAnthropicModel } from "./anthropic";
 import { repoRoot, userPaths } from "./paths";
 import { runNodeScript } from "./scripts";
+import { runScreener, type ScreenerResult } from "./screener";
 
 function safeReplaceAll(s: string, map: Record<string, string>) {
   let out = s;
@@ -66,10 +67,11 @@ export async function generateTailoredPdf(params: {
   num: string;
   jd: string;
   reportRel: string;
+  reportPath?: string;
   log: (l: string) => void;
   setProgress: (s: string, d?: string) => void;
 }) {
-  const { company, slug, num, jd, log, setProgress } = params;
+  const { company, slug, num, jd, log, setProgress, reportPath } = params;
 
   const [cv, profileYml, profileMd, sharedMd, pdfMode, template] = await Promise.all([
     fs.readFile(userPaths.cv, "utf-8"),
@@ -79,6 +81,21 @@ export async function generateTailoredPdf(params: {
     fs.readFile(path.join(repoRoot, "modes", "pdf.md"), "utf-8"),
     fs.readFile(path.join(repoRoot, "templates", "cv-template.html"), "utf-8"),
   ]);
+
+  let scoutGapSection = "";
+  if (reportPath) {
+    try {
+      const reportMd = await fs.readFile(reportPath, "utf-8");
+      scoutGapSection = extractScoutGapSection(reportMd);
+      if (scoutGapSection) {
+        log(`Loaded Scout gap section from ${path.basename(reportPath)} (${scoutGapSection.length} chars)`);
+      } else {
+        log(`Report ${path.basename(reportPath)} had no parseable Scout gap section — proceeding without it`);
+      }
+    } catch (e) {
+      log(`Could not read report for Scout gap injection: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   const profile = YAML.parse(profileYml) as any;
   const candidate = profile?.candidate ?? {};
@@ -116,8 +133,20 @@ export async function generateTailoredPdf(params: {
     "- dayInTheLife: OMIT (return empty array) unless the candidate's profile clearly suggests specific daily rituals.",
     "- lifePhilosophy: OMIT (return null) unless the candidate's profile includes a personal quote; do NOT fabricate.",
     "",
+    "BULLET REWRITING — THE RECRUITER (critical):",
+    "Every experience bullet MUST follow the Google XYZ formula: 'Accomplished X, as measured by Y, by doing Z.'",
+    "  X = the outcome (what changed because of the candidate).",
+    "  Y = the metric (the measurable proof).",
+    "  Z = the method (what they specifically did).",
+    "Example transformation:",
+    "  BEFORE: 'Managed marketing team and ran campaigns.'",
+    "  AFTER:  'Increased qualified pipeline 47% (X), measured by SQL volume in Salesforce (Y), by launching account-based campaigns targeting Fortune 500 finance buyers (Z).'",
+    "ALWAYS: lead with outcome where possible; weave in 1–2 keywords from the Scout's keyword gap list (provided below) per bullet — natural integration, no stuffing; use strong action verbs (Led, Launched, Scaled, Architected, Negotiated, Shipped).",
+    "NEVER: invent metrics. If cv.md has no number for a bullet, keep the bullet qualitative — do NOT fabricate '+30%' or 'doubled' numbers. NEVER replace concrete duties with vague phrases ('improved processes'). NEVER add accomplishments not present in cv.md or _profile.md.",
+    "KEYWORD PLACEMENT: every HIGH-impact keyword from the Scout gap list must appear at least once in the first half-page (summaryText, competencies, or the first bullet of the most recent role). Every MED-impact keyword should appear at least once anywhere ATS-readable.",
+    "",
     "HTML STRUCTURE for experienceHtml (use these CSS classes, in reverse-chronological order):",
-    '<div class="job"><div class="job-header"><div class="job-title-block"><div class="job-role">Vice President of Revenue Enablement</div><div class="job-company">Enable</div></div><div class="job-meta"><div class="job-period">Sep 2024 – May 2025</div><div class="job-location">Remote</div></div></div><ul><li>Achievement bullet with <strong>key metric</strong>.</li></ul></div>',
+    '<div class="job"><div class="job-header"><div class="job-title-block"><div class="job-role">Vice President of Revenue Enablement</div><div class="job-company">Enable</div></div><div class="job-meta"><div class="job-period">Sep 2024 – May 2025</div><div class="job-location">Remote</div></div></div><ul><li>Accomplished X, as measured by <strong>Y</strong>, by doing Z.</li></ul></div>',
     "",
     "HTML STRUCTURE for projectsHtml (optional, omit by returning empty string):",
     '<div class="project"><span class="project-title">Name</span><div class="project-desc">Description</div><div class="project-tech">Tech/context</div></div>',
@@ -133,7 +162,7 @@ export async function generateTailoredPdf(params: {
     'Include Modern AI tooling (e.g., ChatGPT, Cursor, Claude, MCP servers) under a labeled category row when CV or overrides list them.',
   ].join("\n");
 
-  const user = [
+  const baseUser = [
     "## System rules (_shared.md)",
     sharedMd,
     "\n## User overrides (_profile.md)",
@@ -142,34 +171,72 @@ export async function generateTailoredPdf(params: {
     pdfMode,
     "\n## Candidate CV (cv.md)",
     cv,
+    scoutGapSection
+      ? "\n## Scout gap analysis (from evaluation report — Recruiter consumes this)\n" + scoutGapSection
+      : "",
     "\n## Job description",
     jd,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 
-  const resp = await client.messages.create({
-    model,
-    max_tokens: 8000,
-    temperature: 0.2,
-    system,
-    messages: [
-      {
-        role: "user",
-        content:
-          user +
-          "\n\nReturn JSON with keys: lang, brandPrimary, brandAccent, tagline, summaryText, competencies (string[]), mostProudOf (array of {title, description}), strengths (string[]), methodologies (array of {name, level}), dayInTheLife (array of {time, activity}), lifePhilosophy ({quote, author} or null), experienceHtml, projectsHtml, educationHtml, certificationsHtml, skillsHtml.",
-      },
-    ],
-  });
+  const generateParts = async (fixInstructions: string, attemptLabel: string): Promise<PdfParts> => {
+    setProgress(`Generating PDF content (${attemptLabel})`);
+    const userContent =
+      baseUser +
+      (fixInstructions
+        ? "\n\n## Screener fix instructions (apply ALL of these — they are mandatory)\n" + fixInstructions
+        : "") +
+      "\n\nReturn JSON with keys: lang, brandPrimary, brandAccent, tagline, summaryText, competencies (string[]), mostProudOf (array of {title, description}), strengths (string[]), methodologies (array of {name, level}), dayInTheLife (array of {time, activity}), lifePhilosophy ({quote, author} or null), experienceHtml, projectsHtml, educationHtml, certificationsHtml, skillsHtml.";
 
-  let jsonText = resp.content.map((b) => ("text" in b ? b.text : "")).join("").trim();
-  jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
-  let parsed: PdfParts;
-  try {
-    parsed = PdfPartsSchema.parse(JSON.parse(jsonText));
-  } catch (e) {
-    log("Failed to parse PDF JSON from model. Raw response (first 400 chars):");
-    log(jsonText.slice(0, 400));
-    throw e instanceof Error ? e : new Error(String(e));
+    const resp = await client.messages.create({
+      model,
+      max_tokens: 8000,
+      temperature: 0.2,
+      system,
+      messages: [{ role: "user", content: userContent }],
+    });
+
+    let jsonText = resp.content.map((b) => ("text" in b ? b.text : "")).join("").trim();
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
+    try {
+      return PdfPartsSchema.parse(JSON.parse(jsonText));
+    } catch (e) {
+      log(`Failed to parse PDF JSON (${attemptLabel}). Raw response (first 400 chars):`);
+      log(jsonText.slice(0, 400));
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+  };
+
+  // Stage 1: Recruiter draft.
+  let parsed = await generateParts("", "Recruiter draft");
+
+  // Stage 2: Screener. On FAIL, feed the action list back to the Recruiter once and re-screen.
+  let screener: ScreenerResult | null = null;
+  const screenerHistory: ScreenerResult[] = [];
+  const MAX_SCREENER_ATTEMPTS = 2;
+  for (let attempt = 1; attempt <= MAX_SCREENER_ATTEMPTS; attempt++) {
+    setProgress(`Screening (ATS gatekeeper) — attempt ${attempt}/${MAX_SCREENER_ATTEMPTS}`);
+    try {
+      screener = await runScreener({ parts: parsed, jd, scoutGapSection, log });
+    } catch (e) {
+      log(`Screener call failed: ${e instanceof Error ? e.message : String(e)} — continuing without re-screen`);
+      break;
+    }
+    screenerHistory.push(screener);
+    if (screener.verdict === "PASS") {
+      log(`Screener PASS on attempt ${attempt}`);
+      break;
+    }
+    if (attempt >= MAX_SCREENER_ATTEMPTS) {
+      log(`Screener still FAIL after ${MAX_SCREENER_ATTEMPTS} attempts — rendering PDF with verdict attached`);
+      break;
+    }
+    if (screener.actionList.length === 0) {
+      log(`Screener FAIL but emitted no action list — cannot retry`);
+      break;
+    }
+    log(`Screener FAIL on attempt ${attempt} — regenerating with ${screener.actionList.length} fix instructions`);
+    const fixInstructions = screener.actionList.map((a, i) => `${i + 1}. ${a}`).join("\n");
+    parsed = await generateParts(fixInstructions, `Recruiter retry ${attempt + 1}`);
   }
 
   const competenciesHtml = parsed.competencies
@@ -324,7 +391,48 @@ export async function generateTailoredPdf(params: {
 
   await runNodeScript("generate-pdf.mjs", [htmlPath, pdfPath, "--format=letter"], { log });
 
-  return { htmlPath, pdfPath };
+  // Persist Screener verdict alongside the PDF so the user can audit what changed
+  // between attempts and what (if anything) is still flagged.
+  let screenerPath: string | undefined;
+  if (screener) {
+    screenerPath = path.join(userPaths.outputDir, `screen-${slug}-${num}.md`);
+    const header = [
+      `# Screener Verdict — ${company} (#${num})`,
+      "",
+      `**Final verdict:** ${screener.verdict}`,
+      `**Attempts:** ${screenerHistory.length} of ${MAX_SCREENER_ATTEMPTS}`,
+      "",
+      "---",
+      "",
+    ].join("\n");
+    const body = screenerHistory
+      .map((s, i) => `## Attempt ${i + 1} — ${s.verdict}\n\n${s.markdown}`)
+      .join("\n\n---\n\n");
+    await fs.writeFile(screenerPath, header + body, "utf-8");
+    log(`Screener verdict written to ${path.basename(screenerPath)}`);
+  }
+
+  return {
+    htmlPath,
+    pdfPath,
+    screenerPath,
+    screenerVerdict: screener?.verdict,
+    screenerAttempts: screenerHistory.length,
+  };
+}
+
+/**
+ * Pull the Scout block out of a generated evaluation report so the PDF step can
+ * feed the keyword/skills/positioning gap analysis into the Recruiter prompt.
+ * Returns the slice from "## B) Match with CV" up to the next H2, or "" if not found.
+ */
+function extractScoutGapSection(reportMd: string): string {
+  const start = reportMd.search(/^##\s*B\)\s*Match with CV/m);
+  if (start === -1) return "";
+  const rest = reportMd.slice(start);
+  const nextH2 = rest.slice(2).search(/^##\s/m);
+  if (nextH2 === -1) return rest.trim();
+  return rest.slice(0, nextH2 + 2).trim();
 }
 
 function escapeHtml(s: string) {

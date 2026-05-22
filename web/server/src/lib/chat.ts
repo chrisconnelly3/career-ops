@@ -14,6 +14,7 @@ const VALID_MODES = [
   "training",
   "project",
   "apply",
+  "decision-maker",
 ] as const;
 
 export type ChatMode = (typeof VALID_MODES)[number];
@@ -29,6 +30,19 @@ const MODE_FILES: Record<Exclude<ChatMode, "general">, string> = {
   training: "training.md",
   project: "project.md",
   apply: "apply.md",
+  "decision-maker": "decision-maker.md",
+};
+
+export type ChatContext = {
+  /** Report number this chat is scoped to (e.g. "001"). Required for decision-maker mode. */
+  reportNumber?: string;
+  /** Resolved report markdown content (passed by the route handler). */
+  reportContent?: string;
+  /** Pulled from the report filename so we can slug-save the transcript. */
+  reportSlug?: string;
+  /** Company and role pulled from the report H1 — for the opening greeting. */
+  company?: string;
+  role?: string;
 };
 
 async function readOptional(p: string): Promise<string> {
@@ -39,13 +53,14 @@ async function readOptional(p: string): Promise<string> {
   }
 }
 
-async function buildSystemPrompt(mode: ChatMode): Promise<string> {
-  const [shared, profileMd, profileYml, cv, articleDigest] = await Promise.all([
+async function buildSystemPrompt(mode: ChatMode, ctx?: ChatContext): Promise<string> {
+  const [shared, profileMd, profileYml, cv, articleDigest, storyBank] = await Promise.all([
     fs.readFile(userPaths.sharedMd, "utf-8"),
     fs.readFile(userPaths.profileMd, "utf-8"),
     fs.readFile(userPaths.profileYml, "utf-8"),
     fs.readFile(userPaths.cv, "utf-8"),
     readOptional(userPaths.articleDigest),
+    mode === "decision-maker" ? readOptional(userPaths.interviewStoryBank) : Promise.resolve(""),
   ]);
 
   const parts: string[] = [
@@ -79,15 +94,37 @@ async function buildSystemPrompt(mode: ChatMode): Promise<string> {
     parts.push("", `## Mode instructions (${modeFile})`, modeContent);
   }
 
+  if (mode === "decision-maker" && ctx?.reportContent) {
+    parts.push(
+      "",
+      `## Interview is scoped to: ${ctx.company ?? "(unknown company)"} — ${ctx.role ?? "(unknown role)"}`,
+      `**Report:** #${ctx.reportNumber ?? "(unknown)"}`,
+      "",
+      "Use the evaluation report below — especially section F (Interview Prep) and section B (Match with CV / Scout gaps) — to select questions, calibrate seniority expectations, and reference specific gaps in the candidate's CV when probing weak answers.",
+      "",
+      "## Evaluation report",
+      ctx.reportContent,
+    );
+    if (storyBank) {
+      parts.push(
+        "",
+        "## Candidate's story bank (interview-prep/story-bank.md)",
+        "Use this when grading STAR+R answers — if the candidate's live answer maps to a story they already have here, expect them to deliver it cleanly.",
+        storyBank,
+      );
+    }
+  }
+
   return parts.join("\n");
 }
 
 export async function streamChat(
   mode: ChatMode,
   messages: Array<{ role: "user" | "assistant"; content: string }>,
-  res: Response
+  res: Response,
+  ctx?: ChatContext,
 ): Promise<void> {
-  const systemPrompt = await buildSystemPrompt(mode);
+  const systemPrompt = await buildSystemPrompt(mode, ctx);
   const client = getAnthropicClient();
   const model = getAnthropicModel();
 
