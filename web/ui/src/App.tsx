@@ -242,7 +242,7 @@ export function App() {
           <div className="flex items-center gap-3">
             <AvatarIllustration />
             <div>
-              <div className="text-lg font-semibold tracking-tight">Jessica&apos;s Job Tracker</div>
+              <div className="text-lg font-semibold tracking-tight">Chris&apos;s Job Tracker</div>
               <div className="text-sm text-zinc-400">Local dashboard</div>
             </div>
           </div>

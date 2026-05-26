@@ -1,124 +1,197 @@
-# Jessica Melo
+# Chris Connelly
 
-Progressive AI enablement executive & Innovative powerhouse  
-Email: jmelo2325@gmail.com  
-LinkedIn: linkedin.com/in/jessmelo  
-Location: Dallas, TX  
-Phone: 908-947-8577
+Staff Product Designer | Designing with Empathy, Building with Purpose
+Email: chrisconnelly3@gmail.com
+LinkedIn: linkedin.com/in/christopher.l.connelly
+Portfolio: chrismadethat.design (pw: comicsans)
+Location: Allen, TX (remote)
+Phone: (925) 683-4125
 
 ## Executive Profile
 
-Progressive **AI enablement executive** blending 14+ years in tech sales and revenue enablement: quota-carrying success plus leadership of global programs that scale **sales learning**, **AI-guided selling motions**, and **GTM readiness** as durable advantages. Built and led a high-impact enablement function from the ground up within a fast-paced S&P 500 technology company, supporting 600+ sales professionals across B2B, Inside Sales, and Client Relations; direct international enablement across APAC and EMEA. Known for translating people, process, and technology gaps into measurable outcomes through roadmap design — including rolling out methodology, digital onboarding, centralized sales tech stacks, and **AI-assisted seller workflows**. Most recently VP of Revenue Enablement at Enable; role ended in a company-wide reduction in force due to restructuring. **Returning to the market following that workforce reduction and maternity leave**, ready to lead progressive enablement agendas that pair organizational rigor with modern AI responsibly.
+Staff Product Designer with nearly 10 years designing enterprise SaaS products, currently owning end-to-end UX, interaction design, and design system architecture at Finite State for the Assurance Studio hardware and device security platform. Combines research-led problem solving (Jakob's Law, Gestalt, usability heuristics) with hands-on design systems work spanning atomic design, accessible component libraries, and agent-readable documentation for AI-assisted engineering workflows. Influences roadmaps through pitch documents, stakeholder management, and synthesized customer research; mentors designers and cross-functional peers; and ships production-ready frontend code (Tailwind CSS) alongside design. Previously Senior UX Designer at Huntress Labs, where I led the Tailwind design system rollout that powered 50+ components and cut engineering delivery time by ~50%. Bilingual in English and Spanish.
+
+## Most Proud Of
+
+- **Strategic Thinker**: I simplify the messy stuff, turning competing priorities and edge cases into experiences that just work.
+- **Builder of Systems**: I design the Lego sets that let product teams build faster without coloring outside the lines.
+- **Research-Led**: I ask, test, and listen until the real problem introduces itself.
+
+## Life Philosophy
+
+> "What works for everyone works better for everyone."
+
+## A Day in the Life
+
+- Creative exploration
+- Design & prototyping
+- Stakeholder collabs
+- User research & testing
+- Problem solving & iteration
+- Evening workout
+- Quality family time with wife and two pups
 
 ## Experience
 
-### Vice President of Revenue Enablement — Enable (Remote)
-Sep 2024 – May 2025
+### Staff Product Designer, Finite State (Remote)
+Oct 2025 – Present
 
-- Directed global enablement for sales reps, solutions consultants, partner sales, and leadership; aligned enablement KPIs to pipeline health and GTM readiness for key launches.
-- Spearheaded identification and implementation plan for new sales methodology, Command of the Message (CoM).
-- Led rollout of a digital-first onboarding strategy and centralized the sales tech stack: Salesforce, Nooks, Gong, Salesloft, Atrium, Confluence, WorkRamp.
-- Built the AI selling motion for the launch of AI-Powered Analytics, resulting in 2× higher demo conversations and 85% attainment of launch revenue targets within Q4 2024.
+- Sole product designer for Finite State's hardware and device security platform, owning end-to-end UX across the entire application alongside 3 PMs and ~12 engineers.
+- Architected the design system for Assurance Studio (Finite State's next-gen product), shipping 65+ components across 5 atomic layers with a custom in-house Storybook as the engineering team's visual source of truth.
+- Pioneered Finite State's first agent-readable design source-of-truth, optimizing component documentation so the ~12 engineers using AI coding assistants daily face zero ambiguity on component selection across Assurance Studio.
+- Built /buildtopr, a Cursor agent skill that automates the full Jira-ticket-to-merged-PR lifecycle; used it during an engineering stint to ship ~50 frontend tickets in 5 months as the sole non-engineer, outpacing every individual engineer on the team.
+- Authored 10+ roadmap and design-research pitch documents in Notion beyond the typical IC remit, with roughly 5 landing as shipped engineering work or active commitments including Nightly Updates Control, Edit Component v2, and the merged-platform information architecture.
+- Synthesized findings from 30+ stakeholder syncs and Solutions-Engineer-relayed customer feedback into design decisions across the merged-platform information architecture, the project and release configuration data model, license-policy custom labels, and the out-of-date analysis UX.
 
-### Vice President of Sales Enablement — isolved (Remote)
-Aug 2023 – Jul 2024
+### Senior UX Designer, Huntress Labs (Remote, USA)
+Apr 2021 – Jul 2025
 
-- Owned the sales enablement blueprint across a direct sales org of 300+ customer account managers, benefit services reps, and field reps, plus partner enablement for 200+ network partners.
-- Drove cross-functional alignment with product marketing, marketing, and sales operations to standardize rollouts, market messaging, and sales playbooks; contributed to a 20% increase in timely achievement of sales targets.
-- Built KPI-driven onboarding programs across sales segments within 7 months, improving accountability and reducing new-hire ramp time.
-- Optimized the sales technology stack to drive 90%+ utilization across direct sales via a digital fluency framework for onboarding and “everboarding”.
+- Drove UX refinements in escalation workflows, threat detection, and account management tools, dropping support tickets on the escalation flow by ~30% while reducing user errors and boosting CSAT. Solutions were informed by principles like Jakob's Law, Gestalt groupings, and usability heuristics.
+- Led a Tailwind-based design system roll-out across UI/UX teams; adoption reached 100% in six months, powering 50+ components and reducing engineering delivery time by ~50%.
+- Contributed production-ready Tailwind CSS for 5 new design system components via merged GitHub PRs, while maintaining alignment with engineering through Lookbook-based documentation.
+- Spearheaded Product-Led Growth's Trial Summary Reports which significantly accelerated trial-to-paid conversions and positively contributed to Huntress' $165M ARR (over 3M endpoints, 120K+ businesses).
+- Collaborated closely with PMs and engineers to shape product strategy and roadmap priorities, authoring ~12 pitch documents and user research briefs over 4 years with ~6 leading to shipped high-impact initiatives across Security Operations and Core Platform.
+- Shared design system knowledge with 4 fellow designers and mentored 1 cross-functional peer transitioning into design (a security analyst), fostering UX fluency and distributed ownership across the team.
 
-### Senior Director, Global Sales Enablement — Infor (Remote)
-Sep 2022 – Aug 2023
+### Senior Product Designer, Flats or Spikes (Remote)
+Jun 2020 – Apr 2021
 
-- Developed and delivered global training programs on value selling and MEDDPICC across 6 countries; improved the team’s ability to identify and close high-value deals by 25% over six months.
-- Managed a specialized digital coaching team supporting 400+ global sales reps, focused on effective use of the sales technology stack.
-- Implemented strategic sales processes and best practices across global teams, improving consistency and efficiency and increasing win rates by 8%.
+- Designed and implemented an end-to-end mobile design system using React Native and styled-components, delivering ~25 components covering typography, iconography, and UI patterns.
+- Created hundreds of iterative mockups, progressing from low-fidelity wireframes to high-fidelity prototypes, while applying Material Design, Apple HIG, and accessibility best practices throughout.
+- Conducted 2 remote customer discovery interviews and synthesized findings into user personas and critical user journey maps across athlete, coach, and team workflows.
+- Led visual identity and in-app brand consistency design alongside one junior designer, ensuring a cohesive user experience from onboarding through daily task flows.
 
-### Vice President of Sales Strategy & Enablement — Paycom (Dallas, TX)
-Jun 2020 – Jun 2022
+### UX Designer, Topgolf (Dallas, TX)
+Feb 2020 – Apr 2020
 
-- Led a multi-million revenue enablement team of Regional Learning Executives (RLEs) and expanded the org to include Sales Client Acquisition Strategists (SCA) and Sales Codes & Enablement (SCE).
-- Accelerated revenue attainment by directing implementation of a multi-million sales enablement portfolio; key tools included Gong, Seismic, IBISWorld, ZoomInfo, Vidyard.
-- Executed sales process transformations aligned to GTM strategy, driving increased units/revenue and reducing churn and ramp.
-- Managed competing priorities and diverse stakeholders through delegation, conflict resolution, influence, and persuasion.
+- Designed interactive kiosk experiences and an admin portal used across more than 200 simulator bays, creating smooth user flows that also meet business goals like upsells and longer engagement.
+- Built and refined prototypes, both low and high fidelity, to improve everything from gameplay interactions to POS integration and error handling based on user feedback.
+- Maintained the internal UX style guide to ensure visual and interaction consistency across ~150 venues.
+- Worked closely with marketing, operations, and engineering to shape experiences that helped venues see up to three times higher spend per guest in Swing Suite areas.
 
-### Executive Director of Sales Training — Paycom (Dallas, TX)
-Feb 2017 – Jun 2020
+### Senior UX Designer, Korbyt (formerly RMG Networks) (Dallas, TX)
+May 2018 – Feb 2020
 
-- Owned all sales learning programs and development of Regional Learning Executives (onboarding, sales internship, sales leadership, maternity leave coverage, and technical programs).
-- Co-developed Paycom’s Learning Management System (LMS) with the Product team; helped drive LMS into the top 3 revenue-generating products.
-- Designed a Sales Leadership Academy for high-potential talent and a Jr. Executive Internship program (80 interns) across all 50 states to strengthen hiring pipelines.
+- Redesigned a customer-facing iOS app that helped secure a key five-year, $460K contract with a major resort and casino client using RMG's Korbyt SaaS platform.
+- Overhauled the SaaS CMS UX/UI used by Fortune-100 brands (RMG serves over 70% of North American Fortune-100), creating intuitive workflows and consistent interface elements.
+- Built 40+ reusable design assets (components, workflow mockups, and CSS-driven micro-animations) to ensure clarity and polish across digital signage and admin tools.
+- Co-led an offshore Agile dev team of 5 contract engineers based in Bangladesh, managing feature delivery and design implementation in a cross-functional environment.
+- Led UX for 5 advanced features (including camera-based ML integration and real-time CMS-to-display content syncing), adopted by ~20% of the customer base.
 
-### Director of Sales Training — Paycom (Dallas, TX)
-Aug 2013 – Feb 2017
+## Selected Entrepreneurial Projects
 
-- Built Paycom’s sales enablement function from the ground up during rapid IPO growth; created a multi-year roadmap across sales process, onboarding, and tech stack optimization.
-- Pioneered sales coaching support for new hires and maternity leave coverage for sales managers, contributing to closing $1.4M in revenue.
-- Recruited, developed, and upskilled Regional Learning Executives (RLEs); promoted 4 RLEs into sales management roles.
+Founder, Designer-Developer Hybrid, 2013 to Present (Remote)
 
-### Executive Sales Representative — Paycom (Parsippany, NJ)
-Sep 2011 – Aug 2013
-
-- Partnered with CFOs, corporate controllers, and CEOs to reduce labor cost and improve HR/payroll efficiency with EBITDA impact.
-- Ranked top 5 on Paycom’s Top Sellers leaderboard; achieved 158% of plan prior to promotion.
-- Supported client implementations end-to-end, frequently onsite for first payroll submission.
+- **FrameFlow (Figma Plugin) (2024 – Present)**, Self-initiated experimental plugin for slideshow-style frame navigation in Figma. Demonstrates deep mastery of Figma APIs and strong initiative in extending tooling to level-up design teams.
+- **CryptoClaw (2021 – 2023)**, Designed and built a real claw machine that is remotely playable through cryptocurrency payments. Integrated blockchain wallets and custom Web3 payment logic to power livestreaming gameplay and automatic NFT prize distribution. Solely responsible for the end-to-end experience including hardware modifications, blockchain/Web3 integrations, and UX design of the web interface.
+- **See (2015 – 2018)**, Built a mobile app for professional photographers to generate passive income by automatically offering personalized drop-shipped photo prints to their clients. Defined product vision, UX flows, and led a remote team of developers using Agile methods. Emphasized user empathy and behavioral insight to optimize adoption.
 
 ## Education
 
-- Rutgers University — Bachelor of Arts (2011)
-- University of Pennsylvania — Master’s in Organizational Development (2022)
-- University of Pennsylvania — EdD (2022 – Present)
+- **B.A. in Chemistry, Spanish Minor**, San Jose State University
 
-## Leadership & Volunteering
+## Certifications & Achievements
 
-- DFW Women in Sales Enablement — Chapter Lead (2022 – Present)
+- **Certificate of Achievement (in progress)**, UI/UX Design for AI Products, Stanford School of Engineering (Fall 2025)
+- **UX Design Certificate**, UX Certification with Specialty in UX Management, Nielsen Norman Group (2024)
+- **Google UX Design Professional Certificate**, Google / Coursera (2025)
+- **Certificate of Achievement**, Human Centered Design: An Introduction, University of California San Diego / Coursera (2018)
+- **Awwwards Academy**, Creating a Design System in Figma (2024)
 
 ## Skills
 
 ### Strengths / Abilities
 
-- Transformative leadership
-- Consultative selling
-- Hunter prospecting
-- Sales strategy development
-- C-level & stakeholder management
+- Strategic thinking
+- Systems building
+- Research-led problem solving
+- Cross-functional collaboration
+- Design mentorship
+- Design leadership
 
-### Sales Methodologies
+### Methodologies / Frameworks
 
-- MEDDPICC
-- BANT
-- Command of the Message (CoM)
+- Atomic Design Philosophy
+- Material Design
+- Apple HIG
+- WCAG / ARIA accessibility
+- Cognitive / behavioral laws (Jakob's Law, Gestalt groupings, usability heuristics)
+- Design thinking
+- Agile
 
-### Generative AI & workflow tooling
+### UX Design
 
-- ChatGPT (advanced workflows / prompt design for seller-facing assets)
-- Cursor (AI-assisted documentation, playbooks, enablement collateral)
-- Claude (long-context analysis & narrative for programs)
-- MCP servers (tool-connected workflows where appropriate)
+- Figma (expert)
+- InVision
+- Adobe XD
+- Wireframes
+- Interactive prototyping
+- Interaction design
+- Visual design
+- Responsive design
 
-### Enablement & Sales Tech (from experience)
+### UX Research
 
-- Salesforce
-- Gong
-- Salesloft
+- Maze
+- Hotjar
+- Amplitude
+- User testing / surveys
+- Interviews (moderated and unmoderated)
+- A/B testing
+
+### UX Strategy
+
+- UX roadmaps
+- Stakeholder management
+- Stakeholder comms
+- Information architecture
+- User research synthesis
+- Pitch document creation
+- UX principles / laws
+- WCAG / ARIA accessibility
+
+### Design Systems
+
+- Tailwind CSS
+- Lookbook
+- Apple HIG
+- Material Design
+- Atomic Design Philosophy
+
+### Front-End
+
+- HTML5
+- CSS3
+- Tailwind
+- GitHub
+- React Native (Flats or Spikes)
+- styled-components
+
+### Platforms & Tools
+
+- Jira
+- Shortcut
+- TFS
 - Confluence
-- WorkRamp
-- Nooks
-- Atrium
-- Seismic
-- ZoomInfo
-- Vidyard
-- IBISWorld
+- Apple & Google tools
+- Webflow
+- TestFlight
+
+### Modern AI Tooling
+
+- ChatGPT
+- Claude
+- Cursor
+- v0
+- Gemini
+
+### Familiar With
+
+- Blockchain development
+- Web3 payment integrations
+- Cryptocurrency tokenomics
 
 ## Languages
 
-- English
-- Spanish
-- French
-
-## Selected Recommendations (LinkedIn)
-
-- Erin West, Business Development Director at BL Worldwide: Praised commitment to building a more talented sales force and consistent follow-through and execution tied to revenue growth.
-- Brian Varela, Chief Executive Officer at Varemar Digital Marketing: Highlighted unmatched work ethic, diligence, creativity, and ability to help clients in ways others could not.
-
+- English (native)
+- Spanish (advanced)
