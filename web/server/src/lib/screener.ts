@@ -39,9 +39,13 @@ export async function runScreener(input: {
   const client = getAnthropicClient();
   const model = getAnthropicModel();
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const system = [
     "You are The Screener — an Applicant Tracking System (ATS) trained to evaluate whether a resume passes through to a human recruiter.",
     "You are adversarial. You are looking for reasons to filter this resume OUT.",
+    "",
+    `Today's date is ${today}. Use this as the reference point for any date-related check. Do NOT flag dates that are at or before ${today} as "future-dated" — those are valid past or present dates.`,
     "",
     "OUTPUT RULES (strict):",
     "- Return ONLY clean markdown — no code fences, no preamble.",
