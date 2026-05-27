@@ -15,13 +15,28 @@ function safeReplaceAll(s: string, map: Record<string, string>) {
   return out;
 }
 
+// Per-field hard caps. Used by both the Zod schema and the pre-parse sanitizer
+// so the LLM's verbosity drift can't take down an entire eval.
+const LIMITS = {
+  tagline: 160,
+  proudTitle: 50,
+  proudDesc: 320,
+  strength: 60,
+  methodName: 50,
+  dayTime: 24,
+  dayActivity: 120,
+  philQuote: 400,
+  philAuthor: 80,
+  competency: 80,
+} as const;
+
 const PdfPartsSchema = z.object({
   lang: z.enum(["en", "es"]).default("en"),
   brandPrimary: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#1a1a2e"),
   brandAccent: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#2d6a6a"),
-  tagline: z.string().min(4).max(120),
+  tagline: z.string().min(4).max(LIMITS.tagline),
   summaryText: z.string().min(10),
-  competencies: z.array(z.string().min(2)).min(4).max(12),
+  competencies: z.array(z.string().min(2).max(LIMITS.competency)).min(4).max(12),
   experienceHtml: z.string().min(10),
   projectsHtml: z.string().min(0).default(""),
   educationHtml: z.string().min(0).default(""),
@@ -29,35 +44,89 @@ const PdfPartsSchema = z.object({
   skillsHtml: z.string().min(10),
   lifePhilosophy: z
     .object({
-      quote: z.string().min(8),
-      author: z.string().min(2),
+      quote: z.string().min(8).max(LIMITS.philQuote),
+      author: z.string().min(2).max(LIMITS.philAuthor),
     })
     .nullable()
     .default(null),
   mostProudOf: z
     .array(
       z.object({
-        title: z.string().min(2).max(30),
-        description: z.string().min(8).max(240),
+        title: z.string().min(2).max(LIMITS.proudTitle),
+        description: z.string().min(8).max(LIMITS.proudDesc),
       }),
     )
     .max(4)
     .default([]),
-  strengths: z.array(z.string().min(2)).max(8).default([]),
+  strengths: z.array(z.string().min(2).max(LIMITS.strength)).max(8).default([]),
   methodologies: z
     .array(
       z.object({
-        name: z.string().min(1).max(30),
+        name: z.string().min(1).max(LIMITS.methodName),
         level: z.number().int().min(1).max(4),
       }),
     )
     .max(6)
     .default([]),
   dayInTheLife: z
-    .array(z.object({ time: z.string().min(1).max(16), activity: z.string().min(2).max(80) }))
+    .array(z.object({ time: z.string().min(1).max(LIMITS.dayTime), activity: z.string().min(2).max(LIMITS.dayActivity) }))
     .max(6)
     .default([]),
 });
+
+/**
+ * Truncate any string field that exceeds the per-field cap, in place, before
+ * we hand the JSON to Zod. The LLM occasionally writes verbose Most Proud Of
+ * descriptions or taglines, and we'd rather render the slightly-truncated
+ * version than fail the entire eval.
+ */
+function truncate(s: unknown, max: number): unknown {
+  if (typeof s !== "string") return s;
+  if (s.length <= max) return s;
+  // Truncate cleanly at the last word boundary within the limit if possible,
+  // then trim trailing punctuation/whitespace, then ensure terminal period.
+  const slice = s.slice(0, max);
+  const lastSpace = slice.lastIndexOf(" ");
+  const cut = lastSpace > max - 40 ? slice.slice(0, lastSpace) : slice;
+  return cut.replace(/[\s,;:—–-]+$/, "").replace(/\.+$/, "") + ".";
+}
+
+function sanitizePdfParts(raw: any): any {
+  if (!raw || typeof raw !== "object") return raw;
+  if (typeof raw.tagline === "string") raw.tagline = truncate(raw.tagline, LIMITS.tagline);
+  if (Array.isArray(raw.competencies)) {
+    raw.competencies = raw.competencies.map((c: unknown) => truncate(c, LIMITS.competency));
+  }
+  if (Array.isArray(raw.mostProudOf)) {
+    for (const item of raw.mostProudOf) {
+      if (item && typeof item === "object") {
+        item.title = truncate(item.title, LIMITS.proudTitle);
+        item.description = truncate(item.description, LIMITS.proudDesc);
+      }
+    }
+  }
+  if (Array.isArray(raw.strengths)) {
+    raw.strengths = raw.strengths.map((s: unknown) => truncate(s, LIMITS.strength));
+  }
+  if (Array.isArray(raw.methodologies)) {
+    for (const m of raw.methodologies) {
+      if (m && typeof m === "object") m.name = truncate(m.name, LIMITS.methodName);
+    }
+  }
+  if (Array.isArray(raw.dayInTheLife)) {
+    for (const d of raw.dayInTheLife) {
+      if (d && typeof d === "object") {
+        d.time = truncate(d.time, LIMITS.dayTime);
+        d.activity = truncate(d.activity, LIMITS.dayActivity);
+      }
+    }
+  }
+  if (raw.lifePhilosophy && typeof raw.lifePhilosophy === "object") {
+    raw.lifePhilosophy.quote = truncate(raw.lifePhilosophy.quote, LIMITS.philQuote);
+    raw.lifePhilosophy.author = truncate(raw.lifePhilosophy.author, LIMITS.philAuthor);
+  }
+  return raw;
+}
 
 type PdfParts = z.infer<typeof PdfPartsSchema>;
 
@@ -122,16 +191,16 @@ export async function generateTailoredPdf(params: {
     "Examples: Salesforce → #00A1E0/#032D60, HubSpot → #FF7A59/#2D3E50, Anthropic → #D97757/#191919, Wellhub → #FF6132/#1C1C1C.",
     "If you cannot identify the company, use #1a1a2e/#2d6a6a.",
     "",
-    "CONTENT GUIDELINES:",
+    "CONTENT GUIDELINES (every length cap below is a HARD limit — exceeding it fails validation):",
     "- If User overrides (_profile.md) contain a heading like 'Tailored CV / PDF', treat those bullets as mandatory (they supersede conflicting defaults below).",
-    "- tagline: ONE short personal brand line (6–12 words); if _profile mandates a brand (e.g., progressive AI enablement executive), align with it.",
+    "- tagline: ONE short personal brand line (6–12 words, MAX 150 characters). Align with any brand mandated in _profile.",
     '- summaryText: 3–5 sentence executive profile, dense with JD keywords, written in 1st-person-implied prose (no "I"). Closing sentence must obey any explicit ending/placement narrative required in User overrides.',
-    "- competencies: 6–10 short keyword phrases from the JD, e.g. 'Revenue Enablement Strategy'.",
-    "- mostProudOf: 3 items, each a title (1–3 words) + one-sentence description of a career-defining achievement. Examples of titles: Ingenuity, Growth, Expertise, Leadership, Impact, Craft.",
-    "- strengths: 5–7 short strengths/abilities phrases (2–5 words each), e.g. 'Transformative Leadership', 'Consultative Selling'.",
-    "- methodologies: 3–5 domain-relevant frameworks with a proficiency level 1–4. For sales-enablement roles use MEDDPICC/BANT/CoM/SPIN/Challenger. For eng roles use SOLID/TDD/DDD/REST/GraphQL. Pick what fits the candidate and JD.",
-    "- dayInTheLife: OMIT (return empty array) unless the candidate's profile clearly suggests specific daily rituals.",
-    "- lifePhilosophy: OMIT (return null) unless the candidate's profile includes a personal quote; do NOT fabricate.",
+    "- competencies: 6–10 short keyword phrases from the JD, MAX 70 characters each. Example: 'Revenue Enablement Strategy'.",
+    "- mostProudOf: 3 items. Title: 1–3 words, MAX 45 characters. Description: ONE punchy sentence, MAX 200 characters (target ~120). Example titles: Ingenuity, Growth, Expertise, Leadership, Impact, Craft. If your description runs long, cut it shorter — terseness beats verbosity here.",
+    "- strengths: 5–7 strengths/abilities phrases (2–5 words each, MAX 55 characters). Example: 'Transformative Leadership', 'Consultative Selling'.",
+    "- methodologies: 3–5 domain-relevant frameworks with proficiency level 1–4. Name MAX 45 characters. For sales-enablement roles use MEDDPICC/BANT/CoM/SPIN/Challenger. For eng roles use SOLID/TDD/DDD/REST/GraphQL. Pick what fits the candidate and JD.",
+    "- dayInTheLife: time slot MAX 20 characters; activity MAX 100 characters. OMIT (return empty array) unless the candidate's profile clearly suggests specific daily rituals.",
+    "- lifePhilosophy: quote MAX 350 characters. OMIT (return null) unless the candidate's profile includes a personal quote; do NOT fabricate.",
     "",
     "BULLET REWRITING — THE RECRUITER (critical):",
     "Every experience bullet MUST follow the Google XYZ formula: 'Accomplished X, as measured by Y, by doing Z.'",
@@ -198,7 +267,9 @@ export async function generateTailoredPdf(params: {
     let jsonText = resp.content.map((b) => ("text" in b ? b.text : "")).join("").trim();
     jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
     try {
-      return PdfPartsSchema.parse(JSON.parse(jsonText));
+      const raw = JSON.parse(jsonText);
+      const cleaned = sanitizePdfParts(raw);
+      return PdfPartsSchema.parse(cleaned);
     } catch (e) {
       log(`Failed to parse PDF JSON (${attemptLabel}). Raw response (first 400 chars):`);
       log(jsonText.slice(0, 400));

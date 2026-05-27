@@ -24,6 +24,26 @@ async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true });
 }
 
+/**
+ * Create the tracker file with a markdown table header if it doesn't exist.
+ * merge-tracker.mjs requires this file or it silently exits without merging.
+ */
+async function ensureApplicationsTracker(log: (line: string) => void) {
+  try {
+    await fs.access(userPaths.applicationsMd);
+    return; // exists, nothing to do
+  } catch {
+    // not found, seed it
+  }
+  await ensureDir(path.dirname(userPaths.applicationsMd));
+  const header =
+    "# Career-Ops Application Tracker\n\n" +
+    "| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n" +
+    "|---|------|---------|------|-------|--------|-----|--------|-------|\n";
+  await fs.writeFile(userPaths.applicationsMd, header, "utf-8");
+  log(`Seeded ${path.relative(repoRoot, userPaths.applicationsMd)} (tracker file did not exist)`);
+}
+
 async function nextReportNumber(): Promise<string> {
   await ensureDir(userPaths.reportsDir);
   const files = await fs.readdir(userPaths.reportsDir);
@@ -44,9 +64,13 @@ async function extractJdFromUrl(jdUrl: string, log: (l: string) => void) {
   try {
     const page = await browser.newPage();
     log(`Navigating to ${jdUrl}`);
-    await page.goto(jdUrl, { waitUntil: "networkidle", timeout: 90_000 });
+    // `networkidle` hangs forever on sites with long-polling / analytics
+    // beacons (LinkedIn is the canonical offender). DOM-content-loaded
+    // is enough — most job listings inject body text on first paint.
+    await page.goto(jdUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    // Give SPA frameworks a beat to hydrate before we grab innerText.
+    await page.waitForTimeout(2500);
 
-    // Heuristic: grab visible text.
     const text = await page.evaluate(() => {
       const d = (globalThis as any).document;
       return d?.body?.innerText || "";
@@ -109,21 +133,24 @@ export async function runEvaluateJob(
   const client = getAnthropicClient();
   const model = getAnthropicModel();
 
+  const today = todayYmd();
+
   const system = [
     "You are career-ops, a professional job fit analysis platform.",
-    "Return ONLY clean markdown — no code fences, no preamble text before the heading.",
+    `Today's date is ${today}. ALWAYS use this date verbatim in the **Date:** field of the report header — never substitute a date from your training data.`,
+    "Return ONLY clean markdown. No code fences. No preamble text before the heading.",
     "",
     "REPORT FORMATTING RULES (critical):",
     "- The report is rendered in a SaaS dashboard, not read as raw text.",
     "- Write like a product, not a chatbot. No filler phrases like 'Let me analyze...' or 'Here is your report'.",
-    "- Use direct, decisive language: 'Strong match', 'Gap — mitigable', 'Not recommended unless...'",
+    "- Use direct, decisive language: 'Strong match', 'Gap, mitigable', 'Not recommended unless...'",
     "- Every section must earn its space. Cut fluff, keep signal.",
     "",
     "HEADER FORMAT (exact):",
     "# Evaluation: {Company} — {Role}",
     "",
     "**URL:** {url if provided}",
-    "**Date:** {YYYY-MM-DD}",
+    `**Date:** ${today}`,
     "**Archetype:** {detected archetype}",
     "**Score:** {X.X} / 5",
     "",
@@ -194,6 +221,10 @@ export async function runEvaluateJob(
   // Strip markdown code fences the model sometimes wraps output in
   reportMd = reportMd.replace(/^```(?:markdown|md)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
 
+  // Backstop: rewrite the **Date:** line to today regardless of what the LLM emitted
+  // (models drift toward training-cutoff dates if they ignore the system prompt).
+  reportMd = reportMd.replace(/^\*\*Date:\*\*\s*[^\n]*$/m, `**Date:** ${today}`);
+
   // If there's preamble text before the first heading, extract from the heading onward
   if (!reportMd.startsWith("#")) {
     const headingIdx = reportMd.indexOf("\n#");
@@ -231,6 +262,10 @@ export async function runEvaluateJob(
   const notes = "Web dashboard evaluation";
   const tsvLine = [num, trackerWhen, company, role, status, score, pdfEmoji, `[${num}](${reportRel})`, notes].join("\t");
   await fs.writeFile(tsvPath, tsvLine, "utf-8");
+
+  // Auto-seed data/applications.md if missing. The merge script bails when
+  // it can't find the tracker file, leaving evals invisible to the dashboard.
+  await ensureApplicationsTracker(ctx.log);
 
   ctx.setProgress("Merging tracker");
   await runNodeScript("merge-tracker.mjs", [], { log: ctx.log });
