@@ -41,7 +41,7 @@ Oct 2025 – Present
 - Pioneered Finite State's first agent-readable design source-of-truth, optimizing component documentation so the ~12 engineers using AI coding assistants daily face zero ambiguity on component selection across Assurance Studio.
 - Built /buildtopr, a Cursor agent skill that automates the full Jira-ticket-to-merged-PR lifecycle; used it during an engineering stint to ship ~50 frontend tickets in 5 months as the sole non-engineer, outpacing every individual engineer on the team.
 - Authored 10+ roadmap and design-research pitch documents in Notion beyond the typical IC remit, with roughly 5 landing as shipped engineering work or active commitments including Nightly Updates Control, Edit Component v2, and the merged-platform information architecture.
-- Synthesized findings from 30+ stakeholder syncs and Solutions-Engineer-relayed customer feedback into design decisions across the merged-platform information architecture, the project and release configuration data model, license-policy custom labels, and the out-of-date analysis UX.
+- Designed and shipped solo a 13-module, 50-task internal training app for Assurance Studio with pre/post foundational-knowledge quiz, originally built to onboard myself before I had product-security fluency, then adopted across design, engineering, and product leadership.
 
 ### Senior UX Designer, Huntress Labs (Remote, USA)
 Apr 2021 – Jul 2025
