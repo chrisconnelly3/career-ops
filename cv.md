@@ -17,7 +17,7 @@ Staff Product Designer with nearly 10 years designing enterprise SaaS products, 
 - **Builder of Systems**: I design the Lego sets that let product teams build faster without coloring outside the lines.
 - **Research-Led**: I ask, test, and listen until the real problem introduces itself.
 
-## Life Philosophy
+## UX Philosophy
 
 > "What works for everyone works better for everyone."
 
@@ -131,6 +131,7 @@ Founder, Designer-Developer Hybrid, 2013 to Present (Remote)
 
 ### UX Research
 
+- PostHog
 - Maze
 - Hotjar
 - Amplitude

@@ -227,8 +227,8 @@ export async function generateTailoredPdf(params: {
     "INCLUDE EVERY project listed under cv.md's 'Selected Entrepreneurial Projects' section. Do not curate or drop entries. The candidate's portfolio breadth across years is part of the resume signal; cutting old projects hides relevant range. If page space is tight, shorten each project's description rather than dropping projects.",
     "If a project mentions a URL in cv.md (e.g., 'conelo.co' or 'chrismadethat.design'), wrap that URL in an anchor tag inside the project-desc so it's clickable in the PDF. Example: <a href=\"https://conelo.co\">conelo.co</a>. Add https:// prefix to the href when the URL is bare.",
     "",
-    "HTML STRUCTURE for educationHtml:",
-    '<div class="edu-item"><div class="edu-header"><span class="edu-title"><span class="edu-org">School</span> — Degree</span><span class="edu-year">Year</span></div></div>',
+    "HTML STRUCTURE for educationHtml (mirror the cert-item structure: 2 direct children of edu-item so flex gap renders a clean separator):",
+    '<div class="edu-item"><span class="edu-title"><span class="edu-org">School</span> — Degree</span><span class="edu-year">Year</span></div>',
     "",
     "HTML STRUCTURE for certificationsHtml (omit if none):",
     '<div class="cert-item"><span class="cert-title"><span class="cert-org">Issuer</span> — Cert Name</span><span class="cert-year">Year</span></div>',
@@ -379,7 +379,7 @@ export async function generateTailoredPdf(params: {
           SECTION_PROUD: "Most Proud Of",
           SECTION_STRENGTHS: "Strengths / Abilities",
           SECTION_METHODOLOGIES: "Methodologies",
-          SECTION_PHILOSOPHY: "Life Philosophy",
+          SECTION_PHILOSOPHY: "UX Philosophy",
           SECTION_DAY: "A Day in the Life",
         };
 
@@ -682,7 +682,7 @@ export async function generatePortfolioPdf(params: {
     SECTION_PROUD: "Most Proud Of",
     SECTION_STRENGTHS: "Strengths / Abilities",
     SECTION_METHODOLOGIES: "Methodologies",
-    SECTION_PHILOSOPHY: "Life Philosophy",
+    SECTION_PHILOSOPHY: "UX Philosophy",
     SECTION_DAY: "A Day in the Life",
   };
 
