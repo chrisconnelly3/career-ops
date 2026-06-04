@@ -309,6 +309,24 @@
     margin-bottom: 3px;
   }
 
+  /* Education now renders school + (optional year) on the top row and degree
+     on a separate row below, so Workday and similar ATS parsers can extract
+     the degree field cleanly. Joining school and degree with an em-dash on
+     one line confuses every standard parser. */
+  .edu-item { flex-direction: column; align-items: stretch; }
+  .edu-school {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .edu-degree {
+    display: block;
+    font-size: 9px;
+    color: var(--ink-soft);
+    margin-top: 1px;
+  }
+
   .edu-title, .cert-title {
     font-size: 9.5px;
     font-weight: 500;
@@ -532,6 +550,20 @@
      Experience can't fit beneath it. Individual .job entries still stay
      intact via the .job break-inside rule below. */
   body.ats-mode .section { break-inside: auto !important; page-break-inside: auto !important; }
+  /* Drop letter-spacing on tagged headings — Chromium emits text in PDF with
+     positional gaps that pdftotext (and Workday's PDF parser) interpret as
+     word breaks. With letter-spacing:0.08em, 'EDUCATION' becomes
+     'E D U C AT I O N' in extracted text, and Workday refuses to match the
+     section against its 'Education' dictionary entry. Zero letter-spacing
+     keeps the all-caps look intact while preserving word integrity. */
+  body.ats-mode .section-title { letter-spacing: 0 !important; }
+  body.ats-mode .header-name { letter-spacing: 0 !important; }
+  /* Promote job-role to behave like an h3 even though it's still styled in
+     place — Chromium tags h3 elements as /H3 in the structure tree, giving
+     Workday a per-job heading to anchor on. Without this, jobs that span a
+     page break (e.g. Huntress with 6 bullets) get parsed as two separate
+     work-experience entries because the parser falls back to heuristics. */
+  body.ats-mode h3.job-role { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
 
   /* ------------------------------------------------------------------
      Print
