@@ -142,6 +142,15 @@ async function generatePDF() {
   await page.evaluate(() => document.fonts.ready);
 
   // Generate PDF
+  //
+  // `tagged: true` makes Chromium emit a tagged PDF with /StructTreeRoot and
+  // /MarkInfo. This is REQUIRED for strict ATS parsers (Workday especially) —
+  // without structure tags, those parsers extract the candidate name and
+  // little else. With tags, they walk the structure tree and identify
+  // sections cleanly. Supported in Playwright 1.42+.
+  //
+  // `outline: true` emits PDF bookmarks for h1/h2 headings; some parsers and
+  // viewers use these for additional section detection.
   const pdfBuffer = await page.pdf({
     format: format,
     printBackground: true,
@@ -152,6 +161,8 @@ async function generatePDF() {
       left: '0.6in',
     },
     preferCSSPageSize: false,
+    tagged: true,
+    outline: true,
   });
 
   // Write PDF
