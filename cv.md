@@ -23,13 +23,11 @@ Staff Product Designer with nearly 10 years designing enterprise SaaS products, 
 
 ## A Day in the Life
 
-- Creative exploration
-- Design & prototyping
-- Stakeholder collabs
-- User research & testing
-- Problem solving & iteration
-- Evening workout
-- Quality family time with wife and two pups
+- Morning: Creative exploration and design iteration in Figma/Agentic tools
+- Mid-Morning: Stakeholder syncs with PMs and engineering leads
+- Afternoon: User research sessions or continuous discovery synthesis
+- Late Afternoon: Frontend prototyping or agent-assisted ticket work
+- Evening: Workout, then quality time with wife and two pups
 
 ## Experience
 
@@ -82,9 +80,10 @@ May 2018 – Feb 2020
 
 Founder, Designer-Developer Hybrid, 2013 to Present (Remote)
 
+- **Conelo (2026 – Present)** (conelo.co), Co-founding a marketplace connecting companies with sales-enablement experts, alongside my wife (an executive-level sales-enablement leader on domain and go-to-market; me on product, design, and engineering). Pre-launch and in active development: three service modes (async advice, live calls via Google Meet, team workshops) and a Tailwind plus shadcn/ui design system driven from Magic Patterns directional explorations. Stack: Next.js 15, TypeScript, Prisma, Stripe Connect, NextAuth (LinkedIn OAuth), Google Meet API.
 - **FrameFlow (Figma Plugin) (2024 – Present)**, Self-initiated experimental plugin for slideshow-style frame navigation in Figma. Demonstrates deep mastery of Figma APIs and strong initiative in extending tooling to level-up design teams.
 - **CryptoClaw (2021 – 2023)**, Designed and built a real claw machine that is remotely playable through cryptocurrency payments. Integrated blockchain wallets and custom Web3 payment logic to power livestreaming gameplay and automatic NFT prize distribution. Solely responsible for the end-to-end experience including hardware modifications, blockchain/Web3 integrations, and UX design of the web interface.
-- **See (2015 – 2018)**, Built a mobile app for professional photographers to generate passive income by automatically offering personalized drop-shipped photo prints to their clients. Defined product vision, UX flows, and led a remote team of developers using Agile methods. Emphasized user empathy and behavioral insight to optimize adoption.
+- **See (2015 – 2018)**, Experimental peer-to-peer photography app using BLE proximity to automatically deliver candid photos from photographer to subject with no info exchange. Iterated from a facial-recognition prototype (OpenMyPic) field-tested at the Golden Gate Bridge through hardware experiments (WiFi-enabled SD cards, RFID nametags) to a final smartphone-native BLE build shipped to iOS TestFlight. Owned product vision, UX flows, hardware experimentation, and a small remote dev team; deprecated when Apple killed the BLE P2P API but the category is open again on UWB / iPhone 11+.
 
 ## Education
 
@@ -93,10 +92,10 @@ Founder, Designer-Developer Hybrid, 2013 to Present (Remote)
 ## Certifications & Achievements
 
 - **Certificate of Achievement (in progress)**, UI/UX Design for AI Products, Stanford School of Engineering (Fall 2025)
-- **UX Design Certificate**, UX Certification with Specialty in UX Management, Nielsen Norman Group (2024)
 - **Google UX Design Professional Certificate**, Google / Coursera (2025)
-- **Certificate of Achievement**, Human Centered Design: An Introduction, University of California San Diego / Coursera (2018)
+- **UX Design Certificate**, UX Certification with Specialty in UX Management, Nielsen Norman Group (2024)
 - **Awwwards Academy**, Creating a Design System in Figma (2024)
+- **Certificate of Achievement**, Human Centered Design: An Introduction, University of California San Diego / Coursera (2018)
 
 ## Skills
 
