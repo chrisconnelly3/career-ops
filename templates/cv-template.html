@@ -502,6 +502,38 @@
   }
 
   /* ------------------------------------------------------------------
+     ATS mode (single-column, sidebar suppressed, sections reordered)
+     ------------------------------------------------------------------
+     Applied to <body> for the application-bound tailored CV only. The
+     portfolio CV at chrismadethat.design keeps the two-column layout.
+     Why: PDF text extraction interleaves the floating sidebar with the
+     Experience section, and ATS parsers turn each sidebar card into a
+     phantom job entry. Single-column + sidebar removal eliminates the
+     interleave entirely.
+     Section reorder follows the senior-candidate convention: Profile →
+     Experience → Education → Certifications → Competencies → Skills →
+     Projects. CSS `order` reshuffles without touching the DOM. */
+  body.ats-mode aside.sidebar { display: none !important; }
+  body.ats-mode .main {
+    width: 100%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  body.ats-mode .main > section:nth-child(1) { order: 1; } /* Executive Profile */
+  body.ats-mode .main > section:nth-child(2) { order: 5; } /* Core Competencies */
+  body.ats-mode .main > section:nth-child(3) { order: 6; } /* Tools & Skills */
+  body.ats-mode .main > section:nth-child(4) { order: 3; } /* Education */
+  body.ats-mode .main > section:nth-child(5) { order: 4; } /* Certifications */
+  body.ats-mode .main > section:nth-child(6) { order: 2; } /* Experience */
+  body.ats-mode .main > section:nth-child(7) { order: 7; } /* Projects */
+  /* Allow sections (especially the long Experience block) to span pages so a
+     short Executive Profile doesn't leave a void at the bottom of page 1 when
+     Experience can't fit beneath it. Individual .job entries still stay
+     intact via the .job break-inside rule below. */
+  body.ats-mode .section { break-inside: auto !important; page-break-inside: auto !important; }
+
+  /* ------------------------------------------------------------------
      Print
      ------------------------------------------------------------------ */
   @media print {
@@ -510,7 +542,7 @@
   }
 </style>
 </head>
-<body>
+<body class="{{BODY_MODE_CLASS}}">
 
   <!-- HEADER -->
   <header class="header">

@@ -1,8 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import { getAnthropicClient, getAnthropicModel } from "./anthropic";
 import { repoRoot } from "./paths";
+
+const execFileAsync = promisify(execFile);
 
 export type ScreenerVerdict = "PASS" | "FAIL" | "UNKNOWN";
 
@@ -130,4 +134,142 @@ function extractActionList(md: string): string[] {
   }
   if (current.trim()) items.push(current.trim());
   return items.filter(Boolean);
+}
+
+/**
+ * Extract text from a rendered PDF using the `pdftotext` binary. This is the
+ * same tool most ATS parsers rely on (or a close cousin), so the output is a
+ * faithful approximation of what a real recruiter-side parser will see.
+ *
+ * Returns null when the binary is unavailable on the host — the caller should
+ * treat that as "extract screener skipped" rather than a hard failure, because
+ * not every dev machine ships with poppler-utils.
+ */
+export async function extractPdfText(pdfPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("pdftotext", [pdfPath, "-"], {
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 30_000,
+    });
+    return stdout;
+  } catch {
+    return null;
+  }
+}
+
+export type ExtractedTextScreenerResult = {
+  verdict: ScreenerVerdict;
+  markdown: string;
+  /** Section headers detected, in extraction order. Used for downstream display. */
+  detectedSections: string[];
+  /** Job-entry count parsed from the EXPERIENCE section of the extract. */
+  detectedJobCount: number;
+};
+
+/**
+ * Stage 3.5 of the resume stack — the post-render extract screener.
+ *
+ * Runs AFTER the PDF has been rendered, against the actual text a real ATS
+ * parser would see. Catches positional / layout failures that the JSON-parts
+ * screener cannot see:
+ *  - Decorative sidebar content leaking into the parser-visible text flow
+ *  - Phantom job entries from interleaved sidebar cards
+ *  - Section reordering accidentally hiding key blocks
+ *  - Two-column interleaving when Playwright pagination misbehaves
+ *
+ * Verdict is informational. A FAIL here does NOT trigger a Recruiter retry
+ * (regenerating the JSON parts wouldn't fix template/layout issues). It IS
+ * surfaced in the eval report so the user knows the rendered PDF needs a
+ * manual look before sending.
+ */
+export async function runExtractedTextScreener(input: {
+  pdfText: string;
+  expectedJobCount: number;
+  expectedSections: string[];
+  log: (line: string) => void;
+}): Promise<ExtractedTextScreenerResult> {
+  const { pdfText, expectedJobCount, expectedSections, log } = input;
+
+  const client = getAnthropicClient();
+  const model = getAnthropicModel();
+
+  const system = [
+    "You are The Extract Screener — the final gate that inspects the actual text an ATS parser will read from a rendered resume PDF.",
+    "You are adversarial. You assume the parser is unsophisticated and looks for reasons to fail.",
+    "",
+    "INPUTS YOU RECEIVE:",
+    "- The full pdftotext output of the rendered resume PDF.",
+    "- Ground-truth metadata: expectedJobCount (how many real work-experience entries should exist) and expectedSections (the section headers the resume should contain).",
+    "",
+    "WHAT TO CHECK:",
+    "1. **Section coverage** — every expectedSection must appear, spelled recognizably (case-insensitive, letter-spaced renderings like 'E D U C A T I O N' are acceptable, decorative variants are not).",
+    "2. **Phantom sections** — flag any section-header-looking lines in the extract that are NOT standard ATS sections (e.g. 'MOST PROUD OF', 'UX PHILOSOPHY', 'A DAY IN THE LIFE', 'METHODOLOGIES', 'STRENGTHS / ABILITIES'). Their presence indicates sidebar content leaked into parser-visible text.",
+    "3. **Job-count check** — count company+date-range pairs inside the EXPERIENCE block. Compare against expectedJobCount. If the extracted count is GREATER than expected, that means non-experience content (project entries, sidebar cards, time-slot labels) is being parsed as phantom job entries.",
+    "4. **Section order** — confirm Profile/Summary appears before Experience, and Experience appears before Education/Skills/Projects. Order matters to many ATS systems.",
+    "5. **Interleaving** — look for evidence of two columns of text extracted row-by-row (sentences that don't make grammatical sense; fragments from clearly-different content adjacent without a section break). This is the canonical sidebar-leak symptom.",
+    "",
+    "OUTPUT RULES (strict):",
+    "- Return ONLY clean markdown. No code fences. No preamble.",
+    "- Open with the verdict on its own line: `**VERDICT: PASS**` or `**VERDICT: FAIL**`.",
+    "- Then in this exact order:",
+    "  ## Detected Sections",
+    "  ## Detected Job Count",
+    "  ## Phantom Sections",
+    "  ## Interleaving Evidence",
+    "  ## Action List",
+    "- The Detected Sections section MUST emit a markdown table of all section headers found, in extraction order, marked as 'expected' or 'phantom'.",
+    "- The Detected Job Count section MUST emit `Found: N · Expected: M · Verdict: MATCH | OVER | UNDER`.",
+    "- The Action List is the user's punch list for fixing the template — concrete, ranked, one item per fix.",
+    "",
+    "VERDICT RULES:",
+    "- PASS only if: no phantom sections, job count matches exactly, no interleaving evidence, all expected sections present.",
+    "- Otherwise FAIL.",
+  ].join("\n");
+
+  const userPrompt = [
+    "## Ground truth",
+    `Expected job count: ${expectedJobCount}`,
+    `Expected sections: ${expectedSections.join(", ")}`,
+    "",
+    "## Extracted text from the rendered PDF (what an ATS will see)",
+    "```text",
+    pdfText.slice(0, 25000),
+    "```",
+  ].join("\n");
+
+  const resp = await client.messages.create({
+    model,
+    max_tokens: 3000,
+    temperature: 0.1,
+    system,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+
+  let md = resp.content.map((b) => ("text" in b ? b.text : "")).join("").trim();
+  md = md.replace(/^```(?:markdown|md)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
+
+  const verdict: ScreenerVerdict = /\*\*VERDICT:\s*PASS\*\*/i.test(md)
+    ? "PASS"
+    : /\*\*VERDICT:\s*FAIL\*\*/i.test(md)
+    ? "FAIL"
+    : "UNKNOWN";
+
+  // Parse the Detected Job Count line for downstream surfacing.
+  const jobCountMatch = md.match(/Found:\s*(\d+)/i);
+  const detectedJobCount = jobCountMatch?.[1] ? Number.parseInt(jobCountMatch[1], 10) : -1;
+
+  // Extract just the section names from the Detected Sections table.
+  const detectedSections: string[] = [];
+  const sectionsBlockMatch = md.match(/##\s*Detected Sections[\s\S]*?(?=\n##\s|$)/i);
+  if (sectionsBlockMatch) {
+    const rows = sectionsBlockMatch[0].split("\n").filter((l) => /^\|/.test(l) && !/\|---/.test(l) && !/^\|\s*Section/i.test(l));
+    for (const row of rows) {
+      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+      if (cells[0]) detectedSections.push(cells[0]);
+    }
+  }
+
+  log(`Extract Screener verdict: ${verdict} · detected ${detectedJobCount} jobs · ${detectedSections.length} sections`);
+
+  return { verdict, markdown: md, detectedSections, detectedJobCount };
 }

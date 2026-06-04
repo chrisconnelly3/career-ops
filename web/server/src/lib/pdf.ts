@@ -7,7 +7,13 @@ import YAML from "yaml";
 import { getAnthropicClient, getAnthropicModel } from "./anthropic";
 import { repoRoot, userPaths } from "./paths";
 import { runNodeScript } from "./scripts";
-import { runScreener, type ScreenerResult } from "./screener";
+import {
+  runScreener,
+  extractPdfText,
+  runExtractedTextScreener,
+  type ScreenerResult,
+  type ExtractedTextScreenerResult,
+} from "./screener";
 
 function safeReplaceAll(s: string, map: Record<string, string>) {
   let out = s;
@@ -409,6 +415,7 @@ export async function generateTailoredPdf(params: {
   }
 
   const filled = safeReplaceAll(template2, {
+    "{{BODY_MODE_CLASS}}": "ats-mode",
     "{{LANG}}": lang,
     "{{PAGE_WIDTH}}": pageWidth,
     "{{BRAND_PRIMARY}}": parsed.brandPrimary,
@@ -487,6 +494,39 @@ export async function generateTailoredPdf(params: {
 
   await runNodeScript("generate-pdf.mjs", [htmlPath, pdfPath, "--format=letter"], { log });
 
+  // Stage 3.5: post-render extract screener. Reads the actual text a real ATS
+  // parser would see (via pdftotext) and validates section structure + job
+  // count. Catches positional / layout failures that the JSON-parts screener
+  // cannot see (sidebar leakage, two-column interleaving, etc.). Informational
+  // only — a FAIL here is logged but does not block the eval, because the fix
+  // requires template/CSS changes the Recruiter retry loop cannot make.
+  let extractScreener: ExtractedTextScreenerResult | null = null;
+  try {
+    setProgress("Extracting PDF text for post-render screening");
+    const pdfText = await extractPdfText(pdfPath);
+    if (!pdfText) {
+      log("pdftotext unavailable on this host — skipping post-render extract screener");
+    } else {
+      const jobCount = (parsed.experienceHtml.match(/<div class="job"/g) || []).length;
+      const expectedSections: string[] = [
+        "Executive Profile",
+        "Experience",
+        "Education",
+      ];
+      if (parsed.certificationsHtml.trim()) expectedSections.push("Certifications");
+      expectedSections.push("Tools & Skills");
+      if (parsed.projectsHtml.trim()) expectedSections.push("Projects");
+      extractScreener = await runExtractedTextScreener({
+        pdfText,
+        expectedJobCount: jobCount,
+        expectedSections,
+        log,
+      });
+    }
+  } catch (e) {
+    log(`Extract screener failed: ${e instanceof Error ? e.message : String(e)} — continuing`);
+  }
+
   // Persist Screener verdict alongside the PDF so the user can audit what changed
   // between attempts and what (if anything) is still flagged.
   let screenerPath: string | undefined;
@@ -504,7 +544,23 @@ export async function generateTailoredPdf(params: {
     const body = screenerHistory
       .map((s, i) => `## Attempt ${i + 1} — ${s.verdict}\n\n${s.markdown}`)
       .join("\n\n---\n\n");
-    await fs.writeFile(screenerPath, header + body, "utf-8");
+    let extractBlock = "";
+    if (extractScreener) {
+      extractBlock = [
+        "",
+        "",
+        "---",
+        "",
+        `# Extract Screener (post-render, what ATS actually sees)`,
+        "",
+        `**Verdict:** ${extractScreener.verdict}`,
+        `**Detected job count:** ${extractScreener.detectedJobCount}`,
+        `**Detected sections:** ${extractScreener.detectedSections.join(", ")}`,
+        "",
+        extractScreener.markdown,
+      ].join("\n");
+    }
+    await fs.writeFile(screenerPath, header + body + extractBlock, "utf-8");
     log(`Screener verdict written to ${path.basename(screenerPath)}`);
   }
 
@@ -514,6 +570,8 @@ export async function generateTailoredPdf(params: {
     screenerPath,
     screenerVerdict: screener?.verdict,
     screenerAttempts: screenerHistory.length,
+    extractScreenerVerdict: extractScreener?.verdict,
+    extractScreenerJobCount: extractScreener?.detectedJobCount,
   };
 }
 
@@ -709,6 +767,7 @@ export async function generatePortfolioPdf(params: {
   }
 
   const filled = safeReplaceAll(template2, {
+    "{{BODY_MODE_CLASS}}": "",
     "{{LANG}}": lang,
     "{{PAGE_WIDTH}}": pageWidth,
     "{{BRAND_PRIMARY}}": parsed.brandPrimary,
