@@ -95,6 +95,32 @@ export function createEvaluateJob(payload: { jdText?: string; jdUrl?: string }) 
   });
 }
 
+export type PreflightDuplicate = {
+  reportNumber: string;
+  reportPath: string;
+  company: string;
+  role: string;
+  score: number;
+  scoreRaw: string;
+  status: string;
+  date: string;
+  jobUrl?: string;
+};
+
+export function preflightEvaluate(payload: { jdText?: string; jdUrl?: string }) {
+  return api<{
+    ok: true;
+    company: string;
+    role: string;
+    jdText: string;
+    duplicates: PreflightDuplicate[];
+  }>("/api/evaluate/preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getJob(id: string) {
   return api<{ ok: true; job: Job }>(`/api/jobs/${encodeURIComponent(id)}`);
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import { createEvaluateJob, createPipelineJob, createScanJob, getApplications, getJob, patchStatus, readReport, readScreener, regeneratePdf, runScript } from "./api";
-import type { CareerApplication, Job, ScanJobResult } from "./api";
+import { createEvaluateJob, createPipelineJob, createScanJob, getApplications, getJob, patchStatus, preflightEvaluate, readReport, readScreener, regeneratePdf, runScript } from "./api";
+import type { CareerApplication, Job, PreflightDuplicate, ScanJobResult } from "./api";
 import { Chat } from "./Chat";
 import type { InterviewContext } from "./Chat";
 import { ReportView } from "./ReportView";
@@ -82,6 +82,16 @@ export function App() {
   const [jobPoll, setJobPoll] = useState<number | null>(null);
   const [showJobLogs, setShowJobLogs] = useState(false);
   const [interviewContext, setInterviewContext] = useState<InterviewContext | null>(null);
+
+  // Preflight / dupe detection state for the Evaluate flow
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflightError, setPreflightError] = useState<string | null>(null);
+  const [dupePrompt, setDupePrompt] = useState<{
+    company: string;
+    role: string;
+    jdText: string;
+    duplicates: PreflightDuplicate[];
+  } | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -209,12 +219,49 @@ export function App() {
   }
 
   async function startEvaluate() {
+    setPreflightError(null);
     const payload: { jdText?: string; jdUrl?: string } = {};
     if (jdUrl.trim()) payload.jdUrl = jdUrl.trim();
     if (jdText.trim()) payload.jdText = jdText.trim();
-    const created = await createEvaluateJob(payload);
+    if (!payload.jdText && !payload.jdUrl) return;
+
+    setPreflightLoading(true);
+    try {
+      const pre = await preflightEvaluate(payload);
+      if (pre.duplicates.length > 0) {
+        setDupePrompt({
+          company: pre.company,
+          role: pre.role,
+          jdText: pre.jdText,
+          duplicates: pre.duplicates,
+        });
+        return;
+      }
+      // No dupes; kick the full evaluation immediately, reusing the
+      // already-extracted jdText so the server skips re-scraping.
+      const created = await createEvaluateJob({ jdText: pre.jdText, jdUrl: payload.jdUrl });
+      setJobId(created.jobId);
+      setJob(null);
+    } catch (e) {
+      setPreflightError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreflightLoading(false);
+    }
+  }
+
+  async function proceedDespiteDupes() {
+    if (!dupePrompt) return;
+    const created = await createEvaluateJob({
+      jdText: dupePrompt.jdText,
+      jdUrl: jdUrl.trim() || undefined,
+    });
     setJobId(created.jobId);
     setJob(null);
+    setDupePrompt(null);
+  }
+
+  function cancelDupePrompt() {
+    setDupePrompt(null);
   }
 
   async function startScan() {
@@ -529,10 +576,14 @@ export function App() {
                 </label>
                 <button
                   onClick={() => void startEvaluate()}
-                  className="mt-1 rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:opacity-95"
+                  disabled={preflightLoading || (!jdUrl.trim() && !jdText.trim())}
+                  className="mt-1 rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:opacity-95 disabled:opacity-40"
                 >
-                  Start evaluation
+                  {preflightLoading ? "Checking for duplicates…" : "Start evaluation"}
                 </button>
+                {preflightError && (
+                  <div className="text-xs text-rose-300">Preflight failed: {preflightError}</div>
+                )}
                 <div className="text-xs text-zinc-400">
                   Note: set <span className="text-zinc-200">ANTHROPIC_API_KEY</span> before running evaluations.
                 </div>
@@ -614,6 +665,80 @@ export function App() {
                 {(job?.logs || []).slice(-200).join("\n") || "—"}
               </pre>
             )}
+          </div>
+        </div>
+      )}
+
+      {dupePrompt && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={cancelDupePrompt}
+        >
+          <div
+            className="w-full max-w-2xl rounded-3xl bg-zinc-900 p-6 shadow-2xl ring-1 ring-amber-400/40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-400/20 text-lg text-amber-300">⚠</div>
+              <div className="flex-1">
+                <div className="text-base font-semibold text-amber-100">Possible duplicate evaluation</div>
+                <div className="mt-1 text-sm text-zinc-400">
+                  You&apos;ve already evaluated <span className="text-zinc-100">{dupePrompt.role}</span> at{" "}
+                  <span className="text-zinc-100">{dupePrompt.company}</span>. The pipeline matched against role title and company name, so this catches the same job listed on a different board too.
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-2">
+              {dupePrompt.duplicates.map((d) => (
+                <div
+                  key={d.reportNumber}
+                  className="rounded-xl bg-zinc-950/60 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+                >
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <span className="text-xs text-zinc-500">#{d.reportNumber}</span>
+                    <span className="font-medium text-zinc-100">{d.company}</span>
+                    <span className="text-zinc-400">·</span>
+                    <span className="text-zinc-300">{d.role}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+                    <span>{d.date || "—"}</span>
+                    <span>·</span>
+                    <span>Score: {d.scoreRaw || "—"}</span>
+                    <span>·</span>
+                    <span>Status: {d.status || "—"}</span>
+                    {d.jobUrl && (
+                      <>
+                        <span>·</span>
+                        <a
+                          href={d.jobUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-cyan-300 hover:text-cyan-200"
+                        >
+                          original JD
+                        </a>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                onClick={cancelDupePrompt}
+                className="rounded-xl bg-zinc-950/60 px-4 py-2 text-sm text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-zinc-950/80"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void proceedDespiteDupes()}
+                className="rounded-xl bg-amber-400/20 px-4 py-2 text-sm font-semibold text-amber-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)] hover:bg-amber-400/30"
+              >
+                Evaluate anyway
+              </button>
+            </div>
           </div>
         </div>
       )}

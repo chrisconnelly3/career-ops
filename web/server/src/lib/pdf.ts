@@ -169,6 +169,11 @@ export async function generateTailoredPdf(params: {
   const profile = YAML.parse(profileYml) as any;
   const candidate = profile?.candidate ?? {};
   const fullName = candidate.full_name || "Candidate";
+  const portfolioUrl: string = candidate.portfolio_url || candidate.portfolio || "";
+  const portfolioDisplay: string = portfolioUrl
+    ? portfolioUrl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+    : "";
+  const portfolioPassword: string = candidate.portfolio_password || "";
   const email = candidate.email || "";
   const linkedin = candidate.linkedin || "";
   const location = candidate.location || candidate.city || "";
@@ -199,7 +204,7 @@ export async function generateTailoredPdf(params: {
     "- mostProudOf: 3 items. Title: 1–3 words, MAX 45 characters. Description: ONE punchy sentence, MAX 200 characters (target ~120). Example titles: Ingenuity, Growth, Expertise, Leadership, Impact, Craft. If your description runs long, cut it shorter — terseness beats verbosity here.",
     "- strengths: 5–7 strengths/abilities phrases (2–5 words each, MAX 55 characters). Example: 'Transformative Leadership', 'Consultative Selling'.",
     "- methodologies: 3–5 domain-relevant frameworks with proficiency level 1–4. Name MAX 45 characters. For sales-enablement roles use MEDDPICC/BANT/CoM/SPIN/Challenger. For eng roles use SOLID/TDD/DDD/REST/GraphQL. Pick what fits the candidate and JD.",
-    "- dayInTheLife: time slot MAX 20 characters; activity MAX 100 characters. OMIT (return empty array) unless the candidate's profile clearly suggests specific daily rituals.",
+    "- dayInTheLife: time slot MAX 20 characters; activity MAX 100 characters. If cv.md has an '## A Day in the Life' section with literal 'TimeSlot: activity' lines (e.g., 'Morning: Creative exploration...'), use them VERBATIM — split on the first colon, time before, activity after. Do not paraphrase the activity. OMIT (return empty array) only if cv.md has no such section.",
     "- lifePhilosophy: quote MAX 350 characters. OMIT (return null) unless the candidate's profile includes a personal quote; do NOT fabricate.",
     "",
     "BULLET REWRITING — THE RECRUITER (critical):",
@@ -219,6 +224,8 @@ export async function generateTailoredPdf(params: {
     "",
     "HTML STRUCTURE for projectsHtml (optional, omit by returning empty string):",
     '<div class="project"><span class="project-title">Name</span><div class="project-desc">Description</div><div class="project-tech">Tech/context</div></div>',
+    "INCLUDE EVERY project listed under cv.md's 'Selected Entrepreneurial Projects' section. Do not curate or drop entries. The candidate's portfolio breadth across years is part of the resume signal; cutting old projects hides relevant range. If page space is tight, shorten each project's description rather than dropping projects.",
+    "If a project mentions a URL in cv.md (e.g., 'conelo.co' or 'chrismadethat.design'), wrap that URL in an anchor tag inside the project-desc so it's clickable in the PDF. Example: <a href=\"https://conelo.co\">conelo.co</a>. Add https:// prefix to the href when the URL is bare.",
     "",
     "HTML STRUCTURE for educationHtml:",
     '<div class="edu-item"><div class="edu-header"><span class="edu-title"><span class="edu-org">School</span> — Degree</span><span class="edu-year">Year</span></div></div>',
@@ -379,6 +386,12 @@ export async function generateTailoredPdf(params: {
   const linkedinDisplay = linkedin
     ? linkedin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
     : "";
+  // Ensure LinkedIn href is absolute so PDF renders an active hyperlink. Without
+  // the protocol prefix, Playwright treats it as a relative path and the link
+  // either breaks or opens in the wrong context.
+  const linkedinHref = linkedin
+    ? (linkedin.startsWith("http") ? linkedin : `https://${linkedin}`)
+    : "";
 
   const hasProud = parsed.mostProudOf.length > 0;
   const hasStrengths = parsed.strengths.length > 0;
@@ -405,9 +418,14 @@ export async function generateTailoredPdf(params: {
     "{{EMAIL}}": escapeHtml(email),
     "{{PHONE}}": escapeHtml(phone),
     "{{PHONE_DISPLAY}}": hasPhone ? "flex" : "none",
-    "{{LINKEDIN_URL}}": linkedin || "#",
+    "{{LINKEDIN_URL}}": linkedinHref || "#",
     "{{LINKEDIN_DISPLAY}}": linkedinDisplay,
     "{{LOCATION}}": escapeHtml(location),
+    "{{PORTFOLIO_URL}}": portfolioUrl || "#",
+    "{{PORTFOLIO_TEXT}}": escapeHtml(portfolioDisplay),
+    "{{PORTFOLIO_DISPLAY}}": portfolioUrl ? "flex" : "none",
+    "{{PORTFOLIO_PASSWORD}}": escapeHtml(portfolioPassword),
+    "{{PORTFOLIO_PASSWORD_DISPLAY}}": portfolioPassword ? "inline" : "none",
 
     "{{SECTION_SUMMARY}}": sections.SECTION_SUMMARY,
     "{{SUMMARY_TEXT}}": parsed.summaryText,
@@ -457,7 +475,14 @@ export async function generateTailoredPdf(params: {
   const tmpDir = path.join(userPaths.outputDir, "_tmp");
   await fs.mkdir(tmpDir, { recursive: true });
   const htmlPath = path.join(tmpDir, `cv-${num}-${slug}.html`);
-  const pdfPath = path.join(userPaths.outputDir, `cv-${slug}-${num}.pdf`);
+  // User-facing filename: "{Candidate Name} {Year} - {Company}.pdf". Internal
+  // HTML stays slug+num so temp files dedupe across regenerations.
+  const year = new Date().getFullYear();
+  // Strip only Windows-forbidden filename characters; keep spaces, hyphens, and
+  // parens so names like "Flats or Spikes" or "Korbyt (formerly RMG)" stay readable.
+  const safeCompany = company.replace(/[<>:"/\\|?*]/g, "").trim() || "Company";
+  const pdfFilename = `${fullName} ${year} - ${safeCompany}.pdf`;
+  const pdfPath = path.join(userPaths.outputDir, pdfFilename);
   await fs.writeFile(htmlPath, filled, "utf-8");
 
   await runNodeScript("generate-pdf.mjs", [htmlPath, pdfPath, "--format=letter"], { log });
@@ -490,6 +515,260 @@ export async function generateTailoredPdf(params: {
     screenerVerdict: screener?.verdict,
     screenerAttempts: screenerHistory.length,
   };
+}
+
+/**
+ * Generate a portfolio-version CV PDF: no JD, no Scout, no Screener loop.
+ * Renders cv.md content faithfully through the same template the tailored
+ * flow uses, with brand colors fixed by the caller (defaults to #ff5a1f on
+ * a deep navy accent so it matches the user's portfolio).
+ *
+ * Output: output/cv-portfolio.pdf
+ */
+export async function generatePortfolioPdf(params: {
+  brandPrimary?: string;
+  brandAccent?: string;
+  log: (l: string) => void;
+  setProgress: (s: string, d?: string) => void;
+}) {
+  const { log, setProgress } = params;
+  const brandPrimary = (params.brandPrimary || "#ff5a1f").toLowerCase();
+  const brandAccent = (params.brandAccent || "#1a1a2e").toLowerCase();
+
+  const [cv, profileYml, profileMd, sharedMd, pdfMode, template] = await Promise.all([
+    fs.readFile(userPaths.cv, "utf-8"),
+    fs.readFile(userPaths.profileYml, "utf-8"),
+    fs.readFile(userPaths.profileMd, "utf-8"),
+    fs.readFile(userPaths.sharedMd, "utf-8"),
+    fs.readFile(path.join(repoRoot, "modes", "pdf.md"), "utf-8"),
+    fs.readFile(path.join(repoRoot, "templates", "cv-template.html"), "utf-8"),
+  ]);
+
+  const profile = YAML.parse(profileYml) as any;
+  const candidate = profile?.candidate ?? {};
+  const fullName = candidate.full_name || "Candidate";
+  const email = candidate.email || "";
+  const linkedin = candidate.linkedin || "";
+  const location = candidate.location || candidate.city || "";
+  const phone = candidate.phone || "";
+  const portfolioUrl: string = candidate.portfolio_url || candidate.portfolio || "";
+  const portfolioDisplay: string = portfolioUrl
+    ? portfolioUrl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+    : "";
+  const portfolioPassword: string = candidate.portfolio_password || "";
+
+  setProgress("Generating portfolio PDF content (LLM)");
+  const client = getAnthropicClient();
+  const model = getAnthropicModel();
+
+  const system = [
+    "You generate the candidate's PORTFOLIO-VERSION resume content for a two-column magazine layout.",
+    "Return ONLY valid JSON, no markdown, no backticks.",
+    "HTML fields MUST be fragments only (no <html>, <body>).",
+    "",
+    "PORTFOLIO MODE (critical):",
+    "- This resume is NOT tailored to any specific job description. It lives on the candidate's portfolio site as the canonical, role-agnostic version.",
+    "- Render cv.md content FAITHFULLY. Do not inject role-targeted keywords, do not paraphrase to optimize for a specific industry, do not over-claim.",
+    "- summaryText: distill cv.md's Executive Profile into 3-5 sentences. Keep the candidate's voice and the breadth of their experience. Do not optimize for any one role; lean into 'Senior/Staff Product Designer with nearly 10 years of enterprise SaaS UX, hybrid design + frontend + AI-tooling, security-domain depth' as the framing.",
+    "- competencies: 6-10 short keyword phrases drawn from the candidate's actual skill set (cv.md Skills section + _profile.md cross-cutting advantage). Generic phrasings (e.g., 'Product Design Leadership', 'Design Systems Architecture', 'AI-Assisted Engineering Workflows') beat any single-JD keyword.",
+    "- mostProudOf: use cv.md's Most Proud Of section verbatim (titles + one-sentence descriptions). Do NOT rewrite. 3 items.",
+    "- strengths: pull from cv.md Skills > Strengths/Abilities + _profile.md cross-cutting strengths. 5-7 items.",
+    "- methodologies: pull from cv.md Methodologies/Frameworks. 3-5 items with proficiency 3-4 (this is the candidate's home turf).",
+    "- dayInTheLife: use cv.md's literal 'TimeSlot: activity' lines verbatim.",
+    "- lifePhilosophy: use cv.md's literal quote.",
+    "",
+    "BRAND COLORS (FIXED, do not override):",
+    `brandPrimary = ${brandPrimary}`,
+    `brandAccent = ${brandAccent}`,
+    "",
+    "LENGTH CAPS (HARD limits — exceeding fails validation):",
+    "- tagline: MAX 150 characters",
+    "- mostProudOf descriptions: MAX 200 characters each",
+    "- competency: MAX 70 characters each",
+    "- strength: MAX 55 characters each",
+    "- methodology name: MAX 45 characters",
+    "- dayInTheLife time: MAX 20 chars; activity: MAX 100 chars",
+    "- lifePhilosophy quote: MAX 350 characters",
+    "",
+    "HTML STRUCTURE for experienceHtml (reverse-chronological, render every role from cv.md):",
+    '<div class="job"><div class="job-header"><div class="job-title-block"><div class="job-role">Title</div><div class="job-company">Company</div></div><div class="job-meta"><div class="job-period">Month YYYY – Month YYYY</div><div class="job-location">Location</div></div></div><ul><li>Bullet in Google XYZ form (cv.md is already in XYZ; render bullets faithfully, do not over-edit).</li></ul></div>',
+    "",
+    "HTML STRUCTURE for projectsHtml:",
+    '<div class="project"><span class="project-title">Name (year range)</span><div class="project-desc">Description</div><div class="project-tech">Tech/context</div></div>',
+    "INCLUDE EVERY project listed under cv.md's 'Selected Entrepreneurial Projects' section. Do not drop entries.",
+    'If a project mentions a URL in cv.md (e.g., "conelo.co"), wrap it in <a href="https://...">url</a> inside project-desc.',
+    "",
+    "HTML STRUCTURE for educationHtml, certificationsHtml, skillsHtml: same as tailored mode. Faithful render of cv.md.",
+  ].join("\n");
+
+  const userContent = [
+    "## System rules (_shared.md)",
+    sharedMd,
+    "\n## User overrides (_profile.md)",
+    profileMd,
+    "\n## Mode instructions (pdf.md)",
+    pdfMode,
+    "\n## Candidate CV (cv.md) — render this faithfully, no JD targeting",
+    cv,
+    "\n\nReturn JSON with keys: lang, brandPrimary, brandAccent, tagline, summaryText, competencies (string[]), mostProudOf (array of {title, description}), strengths (string[]), methodologies (array of {name, level}), dayInTheLife (array of {time, activity}), lifePhilosophy ({quote, author} or null), experienceHtml, projectsHtml, educationHtml, certificationsHtml, skillsHtml.",
+  ].join("\n\n");
+
+  const resp = await client.messages.create({
+    model,
+    max_tokens: 8000,
+    temperature: 0.2,
+    system,
+    messages: [{ role: "user", content: userContent }],
+  });
+
+  let jsonText = resp.content.map((b) => ("text" in b ? b.text : "")).join("").trim();
+  jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
+  let parsed: PdfParts;
+  try {
+    const raw = JSON.parse(jsonText);
+    // Force brand colors regardless of what the LLM returned
+    raw.brandPrimary = brandPrimary;
+    raw.brandAccent = brandAccent;
+    const cleaned = sanitizePdfParts(raw);
+    parsed = PdfPartsSchema.parse(cleaned);
+  } catch (e) {
+    log("Failed to parse portfolio PDF JSON. Raw response (first 400 chars):");
+    log(jsonText.slice(0, 400));
+    throw e instanceof Error ? e : new Error(String(e));
+  }
+
+  // Render — same flow as tailored, just into output/cv-portfolio.{html,pdf}
+  const competenciesHtml = parsed.competencies
+    .map((c) => `<span class="competency-tag">${escapeHtml(c)}</span>`)
+    .join("\n");
+
+  const mostProudOfHtml = parsed.mostProudOf
+    .map((item, i) => {
+      const icons = ["lightbulb", "rocket", "trophy", "star"] as const;
+      const icon = renderIconSvg(icons[i % icons.length]);
+      return `<div class="proud-item"><div class="proud-icon">${icon}</div><div class="proud-body"><div class="proud-title">${escapeHtml(item.title)}</div><div class="proud-desc">${escapeHtml(item.description)}</div></div></div>`;
+    })
+    .join("\n");
+
+  const strengthsHtml = parsed.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join("\n");
+
+  const methodologiesHtml = parsed.methodologies
+    .map((m) => {
+      const filled = "●".repeat(m.level);
+      const empty = "○".repeat(Math.max(0, 4 - m.level));
+      return `<div class="method-item"><span class="method-name">${escapeHtml(m.name)}</span><span class="method-dots" aria-label="${m.level} of 4">${filled}${empty}</span></div>`;
+    })
+    .join("\n");
+
+  const dayInTheLifeHtml = parsed.dayInTheLife
+    .map((d) => `<div class="day-item"><span class="day-time">${escapeHtml(d.time)}</span><span class="day-activity">${escapeHtml(d.activity)}</span></div>`)
+    .join("\n");
+
+  const lifePhilosophyHtml = parsed.lifePhilosophy
+    ? `<blockquote class="philosophy-quote">“${escapeHtml(parsed.lifePhilosophy.quote)}”</blockquote><div class="philosophy-author">— ${escapeHtml(parsed.lifePhilosophy.author)}</div>`
+    : "";
+
+  const lang = parsed.lang || "en";
+  const pageWidth = "8.5in";
+
+  const sections = {
+    SECTION_SUMMARY: "Executive Profile",
+    SECTION_COMPETENCIES: "Core Competencies",
+    SECTION_EXPERIENCE: "Experience",
+    SECTION_PROJECTS: "Projects",
+    SECTION_EDUCATION: "Education",
+    SECTION_CERTIFICATIONS: "Certifications",
+    SECTION_SKILLS: "Tools & Skills",
+    SECTION_PROUD: "Most Proud Of",
+    SECTION_STRENGTHS: "Strengths / Abilities",
+    SECTION_METHODOLOGIES: "Methodologies",
+    SECTION_PHILOSOPHY: "Life Philosophy",
+    SECTION_DAY: "A Day in the Life",
+  };
+
+  const linkedinDisplay = linkedin
+    ? linkedin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+    : "";
+  const linkedinHref = linkedin
+    ? (linkedin.startsWith("http") ? linkedin : `https://${linkedin}`)
+    : "";
+
+  const hasProud = parsed.mostProudOf.length > 0;
+  const hasStrengths = parsed.strengths.length > 0;
+  const hasMethodologies = parsed.methodologies.length > 0;
+  const hasPhilosophy = parsed.lifePhilosophy !== null;
+  const hasDay = parsed.dayInTheLife.length > 0;
+  const hasProjects = parsed.projectsHtml.trim().length > 0;
+  const hasCertifications = parsed.certificationsHtml.trim().length > 0;
+  const hasPhone = phone.trim().length > 0;
+  const sidebarHasContent = hasProud || hasStrengths || hasMethodologies || hasPhilosophy || hasDay;
+
+  let template2 = template;
+  if (!sidebarHasContent) {
+    template2 = template2.replace('<aside class="sidebar">', '<aside class="sidebar sidebar-collapsed">');
+  }
+
+  const filled = safeReplaceAll(template2, {
+    "{{LANG}}": lang,
+    "{{PAGE_WIDTH}}": pageWidth,
+    "{{BRAND_PRIMARY}}": parsed.brandPrimary,
+    "{{BRAND_ACCENT}}": parsed.brandAccent,
+    "{{NAME}}": escapeHtml(fullName),
+    "{{TAGLINE}}": escapeHtml(parsed.tagline),
+    "{{EMAIL}}": escapeHtml(email),
+    "{{PHONE}}": escapeHtml(phone),
+    "{{PHONE_DISPLAY}}": hasPhone ? "flex" : "none",
+    "{{LINKEDIN_URL}}": linkedinHref || "#",
+    "{{LINKEDIN_DISPLAY}}": linkedinDisplay,
+    "{{LOCATION}}": escapeHtml(location),
+    "{{PORTFOLIO_URL}}": portfolioUrl || "#",
+    "{{PORTFOLIO_TEXT}}": escapeHtml(portfolioDisplay),
+    "{{PORTFOLIO_DISPLAY}}": portfolioUrl ? "flex" : "none",
+    "{{PORTFOLIO_PASSWORD}}": escapeHtml(portfolioPassword),
+    "{{PORTFOLIO_PASSWORD_DISPLAY}}": portfolioPassword ? "inline" : "none",
+    "{{SECTION_SUMMARY}}": sections.SECTION_SUMMARY,
+    "{{SUMMARY_TEXT}}": parsed.summaryText,
+    "{{SECTION_COMPETENCIES}}": sections.SECTION_COMPETENCIES,
+    "{{COMPETENCIES}}": competenciesHtml,
+    "{{SECTION_EXPERIENCE}}": sections.SECTION_EXPERIENCE,
+    "{{EXPERIENCE}}": parsed.experienceHtml,
+    "{{SECTION_PROJECTS}}": sections.SECTION_PROJECTS,
+    "{{PROJECTS}}": parsed.projectsHtml,
+    "{{PROJECTS_DISPLAY}}": hasProjects ? "block" : "none",
+    "{{SECTION_EDUCATION}}": sections.SECTION_EDUCATION,
+    "{{EDUCATION}}": parsed.educationHtml,
+    "{{SECTION_CERTIFICATIONS}}": sections.SECTION_CERTIFICATIONS,
+    "{{CERTIFICATIONS}}": parsed.certificationsHtml,
+    "{{CERTIFICATIONS_DISPLAY}}": hasCertifications ? "block" : "none",
+    "{{SECTION_SKILLS}}": sections.SECTION_SKILLS,
+    "{{SKILLS}}": parsed.skillsHtml,
+    "{{SECTION_PROUD}}": sections.SECTION_PROUD,
+    "{{PROUD}}": mostProudOfHtml,
+    "{{PROUD_DISPLAY}}": hasProud ? "block" : "none",
+    "{{SECTION_STRENGTHS}}": sections.SECTION_STRENGTHS,
+    "{{STRENGTHS}}": strengthsHtml,
+    "{{STRENGTHS_DISPLAY}}": hasStrengths ? "block" : "none",
+    "{{SECTION_METHODOLOGIES}}": sections.SECTION_METHODOLOGIES,
+    "{{METHODOLOGIES}}": methodologiesHtml,
+    "{{METHODOLOGIES_DISPLAY}}": hasMethodologies ? "block" : "none",
+    "{{SECTION_PHILOSOPHY}}": sections.SECTION_PHILOSOPHY,
+    "{{PHILOSOPHY}}": lifePhilosophyHtml,
+    "{{PHILOSOPHY_DISPLAY}}": hasPhilosophy ? "block" : "none",
+    "{{SECTION_DAY}}": sections.SECTION_DAY,
+    "{{DAY_IN_THE_LIFE}}": dayInTheLifeHtml,
+    "{{DAY_DISPLAY}}": hasDay ? "block" : "none",
+  });
+
+  setProgress("Rendering portfolio PDF (Playwright)");
+  const tmpDir = path.join(userPaths.outputDir, "_tmp");
+  await fs.mkdir(tmpDir, { recursive: true });
+  const htmlPath = path.join(tmpDir, `cv-portfolio.html`);
+  const pdfPath = path.join(userPaths.outputDir, `cv-portfolio.pdf`);
+  await fs.writeFile(htmlPath, filled, "utf-8");
+
+  await runNodeScript("generate-pdf.mjs", [htmlPath, pdfPath, "--format=letter"], { log });
+
+  return { htmlPath, pdfPath, brandPrimary, brandAccent };
 }
 
 /**
