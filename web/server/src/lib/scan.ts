@@ -318,7 +318,10 @@ export async function runScanJob(opts: {
       const page = await browser.newPage();
       try {
         opts.log(`Scanning ${c.name} (Playwright): ${c.careers_url}`);
-        await page.goto(c.careers_url, { waitUntil: "networkidle", timeout: 90_000 });
+        // `networkidle` hangs forever on sites with long-polling / analytics
+        // beacons. DOM-content-loaded is enough — the waitForTimeout below
+        // gives SPA job boards a beat to hydrate before we read links.
+        await page.goto(c.careers_url, { waitUntil: "domcontentloaded", timeout: 60_000 });
         await page.waitForTimeout(2000);
         const links = await page.evaluate(() => {
           const jobLikeHref = (href: string) =>

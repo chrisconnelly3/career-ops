@@ -15,7 +15,12 @@ async function extractJdFromUrl(jdUrl: string, log: (l: string) => void): Promis
   try {
     const page = await browser.newPage();
     log(`Navigating to ${jdUrl}`);
-    await page.goto(jdUrl, { waitUntil: "networkidle", timeout: 90_000 });
+    // `networkidle` hangs forever on sites with long-polling / analytics
+    // beacons (LinkedIn is the canonical offender). DOM-content-loaded
+    // is enough — most job listings inject body text on first paint.
+    await page.goto(jdUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    // Give SPA frameworks a beat to hydrate before we grab innerText.
+    await page.waitForTimeout(2500);
     const text = await page.evaluate(() => {
       const d = (globalThis as any).document;
       return d?.body?.innerText || "";

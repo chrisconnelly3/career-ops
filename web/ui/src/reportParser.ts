@@ -74,6 +74,8 @@ export type ParsedReport = {
   scoreLabel: string;
   recommendation: "apply" | "apply-caution" | "consider" | "skip";
 
+  screener: { verdict: "PASS" | "FAIL" | "UNKNOWN"; attempts: number } | null;
+
   compSummary: CompSummary | null;
 
   roleSummary: RoleSummaryItem[];
@@ -166,6 +168,20 @@ export function parseReport(md: string): ParsedReport {
   if (score >= 4.5) recommendation = "apply";
   else if (score >= 4.0) recommendation = "apply-caution";
   else if (score >= 3.5) recommendation = "consider";
+
+  // ATS Screener verdict — appended to the report as a footer line by the eval
+  // pipeline: "**ATS Screener:** FAIL (2 attempts) — see `output/screen-...md`".
+  let screener: ParsedReport["screener"] = null;
+  const screenerLine = extractHeaderField(md, "ATS Screener");
+  if (screenerLine) {
+    const v = /\bPASS\b/i.test(screenerLine)
+      ? "PASS"
+      : /\bFAIL\b/i.test(screenerLine)
+      ? "FAIL"
+      : "UNKNOWN";
+    const attempts = parseInt(screenerLine.match(/(\d+)\s*attempt/i)?.[1] || "0", 10);
+    screener = { verdict: v, attempts };
+  }
 
   const sections = sectionsBetween(md);
 
@@ -344,6 +360,7 @@ export function parseReport(md: string): ParsedReport {
 
   return {
     title, company, role, url, date, archetype, score, scoreLabel, recommendation,
+    screener,
     compSummary,
     roleSummary, tldr,
     matches, matchStats, gaps,

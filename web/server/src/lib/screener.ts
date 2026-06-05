@@ -13,6 +13,9 @@ export type ScreenerVerdict = "PASS" | "FAIL" | "UNKNOWN";
 export type ScreenerResult = {
   verdict: ScreenerVerdict;
   actionList: string[];
+  /** Genuine experience gaps the candidate cannot claim without fabricating.
+   *  Advisory only — these never cause a FAIL. */
+  domainGaps: string[];
   markdown: string;
 };
 
@@ -31,9 +34,11 @@ export async function runScreener(input: {
   parts: unknown;
   jd: string;
   scoutGapSection: string;
+  /** The candidate's real CV — the source of truth for defect-vs-gap classification. */
+  cv: string;
   log: (line: string) => void;
 }): Promise<ScreenerResult> {
-  const { parts, jd, scoutGapSection, log } = input;
+  const { parts, jd, scoutGapSection, cv, log } = input;
 
   const screenerMode = await fs.readFile(
     path.join(repoRoot, "modes", "screener.md"),
@@ -41,41 +46,63 @@ export async function runScreener(input: {
   );
 
   const client = getAnthropicClient();
+  // The pre-render gate makes a nuanced DEFECT-vs-GAP judgment and produces the
+  // verdict the user trusts before submitting — it runs on the main (Sonnet)
+  // model for consistency. (The post-render extract screener below is a simpler
+  // structural check and stays on the cheaper screener model.)
   const model = getAnthropicModel();
 
   const today = new Date().toISOString().slice(0, 10);
 
   const system = [
     "You are The Screener — an Applicant Tracking System (ATS) trained to evaluate whether a resume passes through to a human recruiter.",
-    "You are adversarial. You are looking for reasons to filter this resume OUT.",
+    "You are adversarial about DEFECTS — but you must NEVER pressure the candidate to fabricate experience they do not have.",
     "",
     `Today's date is ${today}. Use this as the reference point for any date-related check. Do NOT flag dates that are at or before ${today} as "future-dated" — those are valid past or present dates.`,
+    "",
+    "CORE DISTINCTION (the single most important rule):",
+    "You are given the candidate's REAL CV (cv.md). For every required JD keyword that is missing or weak in the Recruiter output, classify it as exactly ONE of:",
+    "- DEFECT (placeable): the underlying experience/skill IS present somewhere in cv.md or the Recruiter parts, but it is absent from the first half-page, buried deep, or hidden in a 'Familiar With'/disclaimer bucket. The Recruiter can fix this TRUTHFULLY by surfacing real evidence. DEFECTS drive the verdict.",
+    "- GAP (genuine): the experience is NOT in cv.md at all — the candidate genuinely lacks it. Adding it would be FABRICATION. A genuine gap is NOT a defect and must NEVER cause a FAIL. Record it under '## Domain Gaps' so the human can decide whether the role is worth applying to.",
+    "When you are unsure whether the candidate truly has the experience, treat it as a GAP. Never push fabrication.",
     "",
     "OUTPUT RULES (strict):",
     "- Return ONLY clean markdown — no code fences, no preamble.",
     "- Open with the verdict on its own line: either `**VERDICT: PASS**` or `**VERDICT: FAIL**`. Never use 'maybe'.",
-    "- Then the four mandatory sections in this exact order:",
+    "- Then these sections in this exact order:",
     "  ## Formatting Issues",
     "  ## Keyword Density Check",
     "  ## Structural Issues",
+    "  ## Domain Gaps",
     "  ## Action List",
-    "- The Keyword Density Check MUST be a markdown table with the columns: Keyword | Impact | In First Half-Page? | Anywhere? | Stuffed?",
-    "- The Action List MUST be a numbered list, ranked by impact. Each item quotes the offending CV field and provides an exact replacement string.",
+    "- The Keyword Density Check MUST be a markdown table with the columns: Keyword | Impact | In CV? | In First Half-Page? | Classification. Classification is one of DEFECT, GAP, or OK.",
+    "- Domain Gaps MUST be a bullet list of the genuine gaps (each: the JD keyword + one phrase on why it is a true gap, e.g. 'no healthcare/PHI experience anywhere in cv.md'). If there are none, write exactly 'None'.",
+    "- The Action List MUST be a numbered list of DEFECT fixes ONLY, ranked by impact. Each item quotes the offending field and gives an exact replacement built ONLY from experience already present in cv.md. If a 'fix' would require asserting experience cv.md does not support, DO NOT write it — it belongs in Domain Gaps.",
     "",
     "VERDICT RULES:",
-    "- FAIL if any HIGH-impact keyword from the Scout gap list is missing from the first half-page (summaryText, competencies, or first bullet of the most recent role).",
-    "- FAIL if any keyword is stuffed (3+ instances within 5 lines).",
-    "- FAIL if any bullet is a vague duty without specifics (e.g., 'improved processes', 'drove results').",
-    "- FAIL if any role has zero bullets.",
-    "- Otherwise PASS.",
+    "- FAIL only if one or more DEFECTS remain:",
+    "  - a HIGH-impact keyword that IS supported by cv.md but is missing from the first half-page (summaryText, competencies, or first bullet of the most recent role);",
+    "  - any keyword stuffed (3+ instances within ~5 lines) — INCLUDING a personal-brand phrase the Recruiter coined and repeated across tagline + summary + competencies + a bullet;",
+    "  - a vague duty bullet without specifics (e.g., 'improved processes', 'drove results');",
+    "  - any role with zero bullets;",
+    "  - an internal contradiction (two fields stating different numbers or conflicting claims).",
+    "- PASS if no DEFECTS remain — EVEN IF Domain Gaps exist. Genuine gaps NEVER cause a FAIL.",
+    "- Match like a real ATS: stem and accept close variants ('strategy'/'strategies', 'design token'/'design tokens'). Do NOT FAIL over singular-vs-plural or exact-verbatim-token mismatches.",
     "",
-    "NEVER praise the resume. NEVER invent ATS rules outside this spec.",
+    "NEVER praise the resume. NEVER invent ATS rules outside this spec. NEVER instruct fabrication.",
   ].join("\n");
 
-  const userPrompt = [
-    "## Mode instructions (screener.md)",
+  // cv.md + screener.md are identical across every eval → cache them. The CV is
+  // the source of truth the Screener uses to classify each missing keyword as a
+  // fixable DEFECT (present in CV, just buried) vs a genuine GAP (not in CV).
+  const modeBlock = [
+    "## Candidate CV (cv.md) — the source of truth for what the candidate ACTUALLY has",
+    cv,
+    "\n## Mode instructions (screener.md)",
     screenerMode,
-    "\n## Scout gap analysis (from evaluation report — these are the keywords the Recruiter was supposed to weave in)",
+  ].join("\n\n");
+  const perEvalBlock = [
+    "## Scout gap analysis (from evaluation report — these are the keywords the Recruiter was supposed to weave in)",
     scoutGapSection || "(no Scout gap section was provided — verify against the JD directly)",
     "\n## Job description",
     jd,
@@ -89,8 +116,14 @@ export async function runScreener(input: {
     model,
     max_tokens: 4000,
     temperature: 0.1,
-    system,
-    messages: [{ role: "user", content: userPrompt }],
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: modeBlock, cache_control: { type: "ephemeral" } },
+        { type: "text", text: perEvalBlock },
+      ],
+    }],
   });
 
   let md = resp.content
@@ -109,10 +142,26 @@ export async function runScreener(input: {
     : "UNKNOWN";
 
   const actionList = extractActionList(md);
+  const domainGaps = extractBulletSection(md, /^##\s*Domain Gaps/im);
 
-  log(`Screener verdict: ${verdict} — ${actionList.length} action items`);
+  log(`Screener verdict: ${verdict} — ${actionList.length} action items, ${domainGaps.length} domain gaps`);
 
-  return { verdict, actionList, markdown: md };
+  return { verdict, actionList, domainGaps, markdown: md };
+}
+
+/** Collect bullet items under a markdown heading, stopping at the next `##`.
+ *  Drops a lone "None" placeholder. */
+function extractBulletSection(md: string, heading: RegExp): string[] {
+  const idx = md.search(heading);
+  if (idx === -1) return [];
+  const lines = md.slice(idx).split("\n").slice(1);
+  const items: string[] = [];
+  for (const raw of lines) {
+    if (/^##\s/.test(raw)) break;
+    const m = /^\s*[-*]\s+(.*)$/.exec(raw);
+    if (m && m[1] && !/^none\.?$/i.test(m[1].trim())) items.push(m[1].trim());
+  }
+  return items;
 }
 
 function extractActionList(md: string): string[] {
@@ -191,6 +240,9 @@ export async function runExtractedTextScreener(input: {
   const { pdfText, expectedJobCount, expectedSections, log } = input;
 
   const client = getAnthropicClient();
+  // Runs on the main model too — Haiku hallucinated phantom "interleaving" from
+  // well-formed bullets, so this structural check needs the same consistency as
+  // the pre-render gate.
   const model = getAnthropicModel();
 
   const system = [
@@ -241,7 +293,7 @@ export async function runExtractedTextScreener(input: {
     model,
     max_tokens: 3000,
     temperature: 0.1,
-    system,
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: userPrompt }],
   });
 

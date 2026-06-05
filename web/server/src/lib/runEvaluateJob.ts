@@ -188,7 +188,11 @@ export async function runEvaluateJob(
     "TONE: professional analyst delivering a brief to a hiring committee. Concise, structured, opinionated."
   ].join("\n");
 
-  const user = [
+  // Everything except the JD is identical across every evaluation, so it gets
+  // a cache breakpoint. Anthropic caches the prefix up to and including the
+  // marked block: back-to-back evals in a session reuse it (5-min window,
+  // refreshed on each hit), cutting latency + ~90% of the input-token cost.
+  const staticContext = [
     "## System context (_shared.md)",
     shared,
     "\n## User profile overrides (_profile.md)",
@@ -200,17 +204,26 @@ export async function runEvaluateJob(
     articleDigest ? "\n## Article digest (optional)\n" + articleDigest : "",
     "\n## Mode instructions (oferta.md)",
     await fs.readFile(path.join(repoRoot, "modes", "oferta.md"), "utf-8"),
-    "\n## Job description",
+  ].filter(Boolean).join("\n\n");
+
+  const jobBlock = [
+    "## Job description",
     input.jdUrl ? `URL: ${input.jdUrl}` : "",
     jd
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 
   const resp = await client.messages.create({
     model,
     max_tokens: 8192,
     temperature: 0.2,
-    system,
-    messages: [{ role: "user", content: user }]
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: staticContext, cache_control: { type: "ephemeral" } },
+        { type: "text", text: jobBlock },
+      ],
+    }],
   });
 
   let reportMd = resp.content
@@ -287,7 +300,14 @@ export async function runEvaluateJob(
   // Append the Screener verdict line to the report so the dashboard surfaces it
   // next to the eval (the PDF column in the tracker only shows ✅/❌).
   if (pdf.screenerVerdict) {
-    const appendLine = `\n\n**ATS Screener:** ${pdf.screenerVerdict} (${pdf.screenerAttempts} attempt${pdf.screenerAttempts === 1 ? "" : "s"})${pdf.screenerPath ? ` — see \`${path.relative(repoRoot, pdf.screenerPath).replace(/\\/g, "/")}\`` : ""}\n`;
+    const gaps = pdf.screenerDomainGaps ?? [];
+    // A FAIL driven only by genuine experience gaps (nothing left to truthfully
+    // fix) is a fit signal, not a defect — say so plainly so the line isn't read
+    // as "the PDF is broken".
+    const gapLine = gaps.length
+      ? `\n**Domain gaps (cannot be added without fabricating — weigh before applying):** ${gaps.join("; ")}`
+      : "";
+    const appendLine = `\n\n**ATS Screener:** ${pdf.screenerVerdict} (${pdf.screenerAttempts} attempt${pdf.screenerAttempts === 1 ? "" : "s"})${pdf.screenerPath ? ` — see \`${path.relative(repoRoot, pdf.screenerPath).replace(/\\/g, "/")}\`` : ""}${gapLine}\n`;
     try {
       await fs.appendFile(reportPath, appendLine, "utf-8");
     } catch (e) {

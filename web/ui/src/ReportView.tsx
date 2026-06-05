@@ -88,6 +88,31 @@ function RecommendationBadge({ rec }: { rec: ParsedReport["recommendation"] }) {
   );
 }
 
+/* ─── ATS Screener badge ────────────────────────────── */
+
+function ScreenerBadge({ screener }: { screener: NonNullable<ParsedReport["screener"]> }) {
+  const pass = screener.verdict === "PASS";
+  const m = pass
+    ? { bg: "bg-emerald-500/15 border-emerald-500/25", text: "text-emerald-200", icon: "✓", label: "ATS Screener: PASS" }
+    : screener.verdict === "FAIL"
+    ? { bg: "bg-rose-500/15 border-rose-500/25", text: "text-rose-200", icon: "✗", label: "ATS Screener: FAIL" }
+    : { bg: "bg-zinc-500/15 border-zinc-500/25", text: "text-zinc-300", icon: "?", label: "ATS Screener: Unknown" };
+  const attemptsLabel = screener.attempts > 0 ? `${screener.attempts} attempt${screener.attempts === 1 ? "" : "s"}` : "";
+  const tip = pass
+    ? "The tailored CV passed the simulated ATS keyword + structure gate."
+    : "The tailored CV still trips the simulated ATS gate. Open the screener verdict file for the action list before sending.";
+  return (
+    <div
+      title={tip}
+      className={cn("inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium", m.bg, m.text)}
+    >
+      <span className="text-base">{m.icon}</span>
+      {m.label}
+      {attemptsLabel && <span className="text-xs opacity-70">· {attemptsLabel}</span>}
+    </div>
+  );
+}
+
 /* ─── Accordion ─────────────────────────────────────── */
 
 function Accordion({
@@ -170,6 +195,7 @@ export function ReportView({
               )}
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <RecommendationBadge rec={rpt.recommendation} />
+                {rpt.screener && <ScreenerBadge screener={rpt.screener} />}
                 {pdfFilename && (
                   <button
                     onClick={() => setShowPdfViewer(true)}

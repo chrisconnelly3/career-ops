@@ -223,7 +223,21 @@ export async function generateTailoredPdf(params: {
     "  AFTER:  'Increased qualified pipeline 47% (X), measured by SQL volume in Salesforce (Y), by launching account-based campaigns targeting Fortune 500 finance buyers (Z).'",
     "ALWAYS: lead with outcome where possible; weave in 1–2 keywords from the Scout's keyword gap list (provided below) per bullet — natural integration, no stuffing; use strong action verbs (Led, Launched, Scaled, Architected, Negotiated, Shipped).",
     "NEVER: invent metrics. If cv.md has no number for a bullet, keep the bullet qualitative — do NOT fabricate '+30%' or 'doubled' numbers. NEVER replace concrete duties with vague phrases ('improved processes'). NEVER add accomplishments not present in cv.md or _profile.md.",
-    "KEYWORD PLACEMENT: every HIGH-impact keyword from the Scout gap list must appear at least once in the first half-page (summaryText, competencies, or the first bullet of the most recent role). Every MED-impact keyword should appear at least once anywhere ATS-readable.",
+    "KEYWORD PLACEMENT: every HIGH-impact keyword from the Scout gap list THAT THE CANDIDATE TRULY HAS must appear at least once in the first half-page (summaryText, competencies, or the first bullet of the most recent role). Every MED-impact keyword the candidate has should appear at least once anywhere ATS-readable.",
+    "",
+    "HONEST GAPS (this OVERRIDES keyword placement when they conflict):",
+    "- The Scout gap list often contains keywords the candidate genuinely does NOT have (a domain like healthcare/PHI, a tool, people-management, motion design, etc.). If cv.md and _profile.md contain NO supporting evidence for a keyword, DO NOT manufacture it. Leave it out entirely. Never invent a domain, metric, title, headcount, or responsibility absent from cv.md.",
+    "- 'Surfacing' a keyword means moving REAL evidence already in cv.md up to the first half-page. It never means inventing evidence. A truthful resume that omits a keyword the candidate lacks BEATS a fabricated one — the Screener now treats genuine gaps as acceptable, not as failures, so you gain nothing by lying and you fail the human reviewer later.",
+    "",
+    "ANTI-STUFFING (the Screener will FAIL the resume for this — do not self-sabotage):",
+    "- Do NOT repeat any single phrase — ESPECIALLY a personal-brand or role-descriptor phrase you coin (e.g. 'player-coach', 'north star representations', 'Design leader' / 'design leadership') — across more than TWO of: tagline, summaryText opening, competencies, a bullet, a strength. Two placements max, in clearly separated zones. If the summary opens with 'Design leader', the tagline must NOT also say it.",
+    "- Integrate each JD keyword naturally; at most twice in the first half-page. Density that reads as spam fails the gate.",
+    "",
+    "SELF-CHECK before you return JSON (pre-pass your own Screener):",
+    "1. Every HIGH-impact keyword the candidate TRULY has is in summaryText, competencies, or the first bullet of the most recent role.",
+    "2. No coined phrase appears more than twice. No two fields state contradictory numbers or claims (e.g. '5 landed' vs '11 landed').",
+    "3. Every bullet has a concrete outcome or named artifact (no vague duties). Every role has at least one bullet.",
+    "4. You added NO keyword, metric, title, or domain that cv.md does not support. If a JD keyword has no basis in cv.md, you left it out.",
     "",
     "HTML STRUCTURE for experienceHtml (use these CSS classes, in reverse-chronological order). NOTE: job-role MUST be <h3> so Chromium tags each job with /H3 in the PDF structure tree — Workday and similar ATSes rely on per-job heading tags to anchor section boundaries across page breaks; without them, long roles like Huntress get parsed as two separate work-experience entries:",
     '<div class="job"><div class="job-header"><div class="job-title-block"><h3 class="job-role">Vice President of Revenue Enablement</h3><div class="job-company">Enable</div></div><div class="job-meta"><div class="job-period">Sep 2024 – May 2025</div><div class="job-location">Remote</div></div></div><ul><li>Accomplished X, as measured by <strong>Y</strong>, by doing Z.</li></ul></div>',
@@ -243,9 +257,13 @@ export async function generateTailoredPdf(params: {
     "HTML STRUCTURE for skillsHtml:",
     '<div class="skills-grid"><div class="skill-item"><span class="skill-category">Category:</span> item1, item2, item3</div></div>',
     'Include Modern AI tooling (e.g., ChatGPT, Cursor, Claude, MCP servers) under a labeled category row when CV or overrides list them.',
+    "SKILLS ARE A FREQUENT FABRICATION TRAP: list ONLY tools/skills that appear in cv.md. The Scout gap list may name a tool the JD wants (e.g. a specific Figma feature, a framework, a methodology) that the candidate does NOT have — DO NOT add it to skillsHtml or anywhere else just because the JD or Scout mentions it. If it is not in cv.md, it is a genuine gap; leave it out. Adding it is fabrication and the Screener will catch it.",
+    "- Do NOT assert a bare named language as a skill unless cv.md claims it verbatim. If cv.md lists HTML5 and CSS3 but not 'JavaScript', write the actual technologies the candidate ships (e.g. 'React Native, Next.js, Tailwind CSS') rather than claiming 'JavaScript' or 'JS' as a standalone proficiency — naming the real frameworks is truthful and still keyword-rich.",
   ].join("\n");
 
-  const baseUser = [
+  // Cross-JD stable context (rules + profile + mode + CV). Identical on every
+  // eval, so it earns the first cache breakpoint.
+  const staticContext = [
     "## System rules (_shared.md)",
     sharedMd,
     "\n## User overrides (_profile.md)",
@@ -254,28 +272,62 @@ export async function generateTailoredPdf(params: {
     pdfMode,
     "\n## Candidate CV (cv.md)",
     cv,
+  ].join("\n\n");
+
+  // Per-JD block (Scout gap + JD). Identical between the draft and the retry of
+  // the SAME eval, so its own breakpoint makes the retry a near-instant cache
+  // hit — only the appended Screener fix instructions are new tokens.
+  const perJobBlock = [
     scoutGapSection
-      ? "\n## Scout gap analysis (from evaluation report — Recruiter consumes this)\n" + scoutGapSection
+      ? "## Scout gap analysis (from evaluation report — Recruiter consumes this)\n" + scoutGapSection
       : "",
     "\n## Job description",
     jd,
   ].filter(Boolean).join("\n\n");
 
-  const generateParts = async (fixInstructions: string, attemptLabel: string): Promise<PdfParts> => {
+  const returnSpec =
+    "Return JSON with keys: lang, brandPrimary, brandAccent, tagline, summaryText, competencies (string[]), mostProudOf (array of {title, description}), strengths (string[]), methodologies (array of {name, level}), dayInTheLife (array of {time, activity}), lifePhilosophy ({quote, author} or null), experienceHtml, projectsHtml, educationHtml, certificationsHtml, skillsHtml.";
+
+  const generateParts = async (
+    fixInstructions: string,
+    attemptLabel: string,
+    priorDraft?: PdfParts,
+  ): Promise<PdfParts> => {
     setProgress(`Generating PDF content (${attemptLabel})`);
-    const userContent =
-      baseUser +
+    const dynamicTail =
       (fixInstructions
-        ? "\n\n## Screener fix instructions (apply ALL of these — they are mandatory)\n" + fixInstructions
-        : "") +
-      "\n\nReturn JSON with keys: lang, brandPrimary, brandAccent, tagline, summaryText, competencies (string[]), mostProudOf (array of {title, description}), strengths (string[]), methodologies (array of {name, level}), dayInTheLife (array of {time, activity}), lifePhilosophy ({quote, author} or null), experienceHtml, projectsHtml, educationHtml, certificationsHtml, skillsHtml.";
+        ? [
+            "## Surgical retry — PATCH your previous draft, do NOT rewrite it from scratch",
+            "Below is the JSON you returned last time, then the Screener's fix instructions. Apply ONLY those fixes:",
+            "- Return the SAME JSON with ONLY the specific fields named in the fixes changed. Leave every other field exactly as it was.",
+            "- Do NOT introduce new keywords, phrases, metrics, or claims anywhere a fix did not explicitly ask for.",
+            "- If a fix removes a stuffed phrase, do not reintroduce it elsewhere. Never create a number or claim that contradicts another field.",
+            "- If a fix would require experience cv.md does not support, SKIP it — the Screener treats genuine gaps as acceptable, so do NOT fabricate to satisfy it.",
+            "",
+            "### Your previous draft (baseline to patch)",
+            "```json",
+            JSON.stringify(priorDraft ?? {}, null, 2),
+            "```",
+            "",
+            "### Screener fix instructions (apply truthfully, and nothing else)",
+            fixInstructions,
+            "",
+          ].join("\n")
+        : "") + returnSpec;
 
     const resp = await client.messages.create({
       model,
       max_tokens: 8000,
       temperature: 0.2,
-      system,
-      messages: [{ role: "user", content: userContent }],
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: staticContext, cache_control: { type: "ephemeral" } },
+          { type: "text", text: perJobBlock, cache_control: { type: "ephemeral" } },
+          { type: "text", text: dynamicTail },
+        ],
+      }],
     });
 
     let jsonText = resp.content.map((b) => ("text" in b ? b.text : "")).join("").trim();
@@ -301,7 +353,7 @@ export async function generateTailoredPdf(params: {
   for (let attempt = 1; attempt <= MAX_SCREENER_ATTEMPTS; attempt++) {
     setProgress(`Screening (ATS gatekeeper) — attempt ${attempt}/${MAX_SCREENER_ATTEMPTS}`);
     try {
-      screener = await runScreener({ parts: parsed, jd, scoutGapSection, log });
+      screener = await runScreener({ parts: parsed, jd, scoutGapSection, cv, log });
     } catch (e) {
       log(`Screener call failed: ${e instanceof Error ? e.message : String(e)} — continuing without re-screen`);
       break;
@@ -319,9 +371,9 @@ export async function generateTailoredPdf(params: {
       log(`Screener FAIL but emitted no action list — cannot retry`);
       break;
     }
-    log(`Screener FAIL on attempt ${attempt} — regenerating with ${screener.actionList.length} fix instructions`);
+    log(`Screener FAIL on attempt ${attempt} — patching with ${screener.actionList.length} fix instructions`);
     const fixInstructions = screener.actionList.map((a, i) => `${i + 1}. ${a}`).join("\n");
-    parsed = await generateParts(fixInstructions, `Recruiter retry ${attempt + 1}`);
+    parsed = await generateParts(fixInstructions, `Recruiter retry ${attempt + 1}`, parsed);
   }
 
   const competenciesHtml = parsed.competencies
@@ -509,12 +561,19 @@ export async function generateTailoredPdf(params: {
       log("pdftotext unavailable on this host — skipping post-render extract screener");
     } else {
       const jobCount = (parsed.experienceHtml.match(/<div class="job"/g) || []).length;
+      // Must mirror the ats-mode render order in cv-template.html (the CSS
+      // `order:` rules): Profile → Experience → Education → Certifications →
+      // Core Competencies → Tools & Skills → Projects. Omitting Core
+      // Competencies here made the extract screener flag it "phantom" on
+      // EVERY eval (it always renders — the schema requires ≥4 competencies),
+      // which was the sole cause of at least one false FAIL (#005 Quickbase).
       const expectedSections: string[] = [
         "Executive Profile",
         "Experience",
         "Education",
       ];
       if (parsed.certificationsHtml.trim()) expectedSections.push("Certifications");
+      expectedSections.push("Core Competencies");
       expectedSections.push("Tools & Skills");
       if (parsed.projectsHtml.trim()) expectedSections.push("Projects");
       extractScreener = await runExtractedTextScreener({
@@ -533,11 +592,15 @@ export async function generateTailoredPdf(params: {
   let screenerPath: string | undefined;
   if (screener) {
     screenerPath = path.join(userPaths.outputDir, `screen-${slug}-${num}.md`);
+    const finalGaps = screener.domainGaps ?? [];
     const header = [
       `# Screener Verdict — ${company} (#${num})`,
       "",
       `**Final verdict:** ${screener.verdict}`,
       `**Attempts:** ${screenerHistory.length} of ${MAX_SCREENER_ATTEMPTS}`,
+      finalGaps.length
+        ? `**Domain gaps (genuine — NOT fabricated):**\n${finalGaps.map((g) => `- ${g}`).join("\n")}`
+        : `**Domain gaps:** none`,
       "",
       "---",
       "",
@@ -571,6 +634,7 @@ export async function generateTailoredPdf(params: {
     screenerPath,
     screenerVerdict: screener?.verdict,
     screenerAttempts: screenerHistory.length,
+    screenerDomainGaps: screener?.domainGaps ?? [],
     extractScreenerVerdict: extractScreener?.verdict,
     extractScreenerJobCount: extractScreener?.detectedJobCount,
   };

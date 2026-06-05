@@ -564,6 +564,15 @@
      page break (e.g. Huntress with 6 bullets) get parsed as two separate
      work-experience entries because the parser falls back to heuristics. */
   body.ats-mode h3.job-role { font-size: 11.5px; font-weight: 600; line-height: 1.2; }
+  /* Keep year tokens adjacent to their cert/degree label. In the two-column
+     portfolio layout the year is pushed to the right margin (space-between) for
+     looks, but under positional (-layout) PDF extraction that wide gap reads as
+     a SEPARATE right-hand column: the years detach into an orphaned strip
+     ('2025 2025 2024 2024 2018') that ATS parsers can't pair back to their
+     certifications. Left-aligning with a small gap keeps 'Cert Name   2025' on
+     one extracted line. ATS cares about text order, not right-alignment. */
+  body.ats-mode .cert-item { justify-content: flex-start; gap: 8px; }
+  body.ats-mode .edu-school { justify-content: flex-start; gap: 8px; }
 
   /* ------------------------------------------------------------------
      Print
