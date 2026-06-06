@@ -8,6 +8,7 @@ import { batchPaths, repoRoot, userPaths } from "./paths";
 import { runNodeScript } from "./scripts";
 import { generateTailoredPdf } from "./pdf";
 import { markPdfGenerated } from "./pdfUpdate";
+import { withFileLock } from "./fileLock";
 
 function todayYmd() {
   return new Date().toISOString().slice(0, 10);
@@ -252,21 +253,26 @@ export async function runEvaluateJob(
     throw new Error("Model output did not look like a markdown report.");
   }
 
-  const num = await nextReportNumber();
   const ymd = todayYmd();
   const trackerWhen = nowTrackerDateTime();
   const { company, role } = extractCompanyAndRoleFromReport(reportMd);
   const slug = slugifyCompany(company) || "company";
-  const reportFilename = `${num}-${slug}-${ymd}.md`;
-  const reportRel = `reports/${reportFilename}`;
-  const reportPath = path.join(userPaths.reportsDir, reportFilename);
 
-  ctx.setProgress("Writing report", reportRel);
-  await ensureDir(userPaths.reportsDir);
-  await fs.writeFile(reportPath, reportMd, "utf-8");
+  // Reserve a report number and write its file as ONE locked step, so two
+  // parallel evals can never grab the same number (the next allocation only
+  // runs after this report file exists on disk). The slow LLM work above ran
+  // in parallel; only this quick critical section is serialized.
+  ctx.setProgress("Writing report");
+  const { num, reportRel, reportPath } = await withFileLock(async () => {
+    const num = await nextReportNumber();
+    const reportFilename = `${num}-${slug}-${ymd}.md`;
+    const reportRel = `reports/${reportFilename}`;
+    const reportPath = path.join(userPaths.reportsDir, reportFilename);
+    await ensureDir(userPaths.reportsDir);
+    await fs.writeFile(reportPath, reportMd, "utf-8");
+    return { num, reportRel, reportPath };
+  });
 
-  ctx.setProgress("Writing tracker addition TSV");
-  await ensureDir(batchPaths.additionsDir);
   const tsvPath = path.join(batchPaths.additionsDir, `${num}-${slug}.tsv`);
   const scoreMatch = reportMd.match(/\*\*Score:\*\*\s*([0-9.]+)\s*\/\s*5/i);
   const score = scoreMatch?.[1] ? `${Number.parseFloat(scoreMatch[1]).toFixed(1)}/5` : "0.0/5";
@@ -274,14 +280,19 @@ export async function runEvaluateJob(
   const pdfEmoji = "❌";
   const notes = "Web dashboard evaluation";
   const tsvLine = [num, trackerWhen, company, role, status, score, pdfEmoji, `[${num}](${reportRel})`, notes].join("\t");
-  await fs.writeFile(tsvPath, tsvLine, "utf-8");
 
-  // Auto-seed data/applications.md if missing. The merge script bails when
-  // it can't find the tracker file, leaving evals invisible to the dashboard.
-  await ensureApplicationsTracker(ctx.log);
-
-  ctx.setProgress("Merging tracker");
-  await runNodeScript("merge-tracker.mjs", [], { log: ctx.log });
+  // TSV write + tracker merge under the lock: merge-tracker.mjs rewrites the
+  // whole applications.md, so two of them running at once would clobber.
+  await withFileLock(async () => {
+    ctx.setProgress("Writing tracker addition TSV");
+    await ensureDir(batchPaths.additionsDir);
+    await fs.writeFile(tsvPath, tsvLine, "utf-8");
+    // Auto-seed data/applications.md if missing. The merge script bails when
+    // it can't find the tracker file, leaving evals invisible to the dashboard.
+    await ensureApplicationsTracker(ctx.log);
+    ctx.setProgress("Merging tracker");
+    await runNodeScript("merge-tracker.mjs", [], { log: ctx.log });
+  });
 
   ctx.setProgress("Generating tailored PDF");
   const pdf = await generateTailoredPdf({
@@ -294,7 +305,9 @@ export async function runEvaluateJob(
     log: ctx.log,
     setProgress: ctx.setProgress
   });
-  await markPdfGenerated(num);
+  // Read-modify-write of applications.md — lock it too so it can't race with
+  // another eval's merge or its own markPdfGenerated.
+  await withFileLock(() => markPdfGenerated(num));
   ctx.log(`PDF generated: ${pdf.pdfPath}`);
 
   // Append the Screener verdict line to the report so the dashboard surfaces it

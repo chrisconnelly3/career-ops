@@ -23,7 +23,13 @@ export type EnqueueOptions = {
   }) => Promise<unknown>;
 };
 
-const limit = pLimit(1); // serialize Playwright + long tasks
+// How many jobs (evals) run at once. Shared-file writes inside an eval
+// (report numbering, tracker merge, PDF-status update) are guarded by an
+// in-process lock (see fileLock.ts), so concurrent evals are safe. Each
+// concurrent eval launches its own headless Chromium, so keep this modest to
+// bound memory. Tune with EVAL_CONCURRENCY in .env.
+const CONCURRENCY = Math.max(1, Number(process.env.EVAL_CONCURRENCY) || 3);
+const limit = pLimit(CONCURRENCY);
 const jobs = new Map<string, Job>();
 
 function nowIso() {
