@@ -5,6 +5,7 @@ import { z } from "zod";
 import YAML from "yaml";
 
 import { getAnthropicClient, getAnthropicModel } from "./anthropic";
+import { ensureContrastAA, contrastRatio } from "./color";
 import { repoRoot, userPaths } from "./paths";
 import { runNodeScript } from "./scripts";
 import {
@@ -194,13 +195,11 @@ export async function generateTailoredPdf(params: {
     "Return ONLY valid JSON, no markdown, no backticks.",
     "HTML fields MUST be fragments only (no <html>, <body>).",
     "",
-    "BRAND COLORS (required):",
-    "Return `brandPrimary` and `brandAccent` as hex strings (#RRGGBB).",
-    "These MUST match the target company's actual brand palette.",
-    "brandPrimary = the company's dominant brand color (used for the header banner and accents).",
-    "brandAccent = a complementary color from their palette (used for section rules and highlights).",
-    "Examples: Salesforce → #00A1E0/#032D60, HubSpot → #FF7A59/#2D3E50, Anthropic → #D97757/#191919, Wellhub → #FF6132/#1C1C1C.",
-    "If you cannot identify the company, use #1a1a2e/#2d6a6a.",
+    "BRAND COLOR (required):",
+    "Return `brandPrimary` as a hex string (#RRGGBB): the company's SINGLE dominant brand color, the one most associated with its logo and identity. Use the real brand hex, e.g. Yahoo → #6001D2, Salesforce → #00A1E0, HubSpot → #FF7A59, Anthropic → #D97757, Spotify → #1DB954.",
+    "This is the resume's accent color. Do NOT pick a 'complementary', contrasting, or secondary color, and do NOT lighten or darken it for legibility — return the TRUE brand hex. Readability (WCAG AA contrast) is enforced downstream in code, so your only job is accuracy.",
+    "Return `brandAccent` set to the SAME value as brandPrimary (it is recomputed downstream and otherwise ignored).",
+    "If you genuinely cannot identify the company's brand color, use #1a1a2e.",
     "",
     "CONTENT GUIDELINES (every length cap below is a HARD limit — exceeding it fails validation):",
     "- If User overrides (_profile.md) contain a heading like 'Tailored CV / PDF', treat those bullets as mandatory (they supersede conflicting defaults below).",
@@ -467,12 +466,26 @@ export async function generateTailoredPdf(params: {
     template2 = template2.replace('<aside class="sidebar">', '<aside class="sidebar sidebar-collapsed">');
   }
 
+  // The resume's accent (all colored text + the brand-tinted pills) is the
+  // company's REAL brand color, not an LLM-invented "complementary" hue. We
+  // darken it toward black (hue preserved) only as far as needed to clear WCAG
+  // AA on white, so a low-contrast brand (bright pink, yellow, cyan) stays
+  // on-brand but readable. Both template color slots get the AA-safe value so
+  // every foreground use passes; the faint background tints are derived from it
+  // and stay light regardless.
+  const brandColor = parsed.brandPrimary;
+  const accentColor = ensureContrastAA(brandColor, "#ffffff", 4.5);
+  log(
+    `Accent: brand ${brandColor} (${contrastRatio(brandColor, "#ffffff").toFixed(2)}:1 on white) → ` +
+    `AA-safe ${accentColor} (${contrastRatio(accentColor, "#ffffff").toFixed(2)}:1)`,
+  );
+
   const filled = safeReplaceAll(template2, {
     "{{BODY_MODE_CLASS}}": "ats-mode",
     "{{LANG}}": lang,
     "{{PAGE_WIDTH}}": pageWidth,
-    "{{BRAND_PRIMARY}}": parsed.brandPrimary,
-    "{{BRAND_ACCENT}}": parsed.brandAccent,
+    "{{BRAND_PRIMARY}}": accentColor,
+    "{{BRAND_ACCENT}}": accentColor,
     "{{NAME}}": escapeHtml(fullName),
     "{{TAGLINE}}": escapeHtml(parsed.tagline),
     "{{EMAIL}}": escapeHtml(email),
