@@ -45,6 +45,21 @@ export type ChatContext = {
   role?: string;
 };
 
+// Hard guarantee that no dash character reaches the user, regardless of what
+// the model emits. Covers ASCII hyphen plus the Unicode dash family (hyphen,
+// non-breaking hyphen, figure/en/em dash, horizontal bar, minus sign).
+const DASH_RE = /[-‐‑‒–—―−]/g;
+
+/** Sanitize one COMPLETE line of output. Must be whole lines so a leading
+ *  markdown bullet marker ("- ") can be preserved as "* " before the blanket
+ *  dash strip turns every other dash into a space. */
+function stripDashesFromLine(line: string): string {
+  // Preserve list structure: a leading "- " (after optional indent) becomes "* ".
+  const withBullets = line.replace(/^(\s*)-(\s)/, "$1*$2");
+  // Every remaining dash-family character becomes a space.
+  return withBullets.replace(DASH_RE, " ");
+}
+
 async function readOptional(p: string): Promise<string> {
   try {
     return await fs.readFile(p, "utf-8");
@@ -67,6 +82,14 @@ async function buildSystemPrompt(mode: ChatMode, ctx?: ChatContext): Promise<str
     "You are career-ops, an AI-powered job search assistant.",
     "You have full context about the candidate below. Use it to give specific, actionable advice.",
     "Respond in the language the user writes in. Use markdown formatting.",
+    "",
+    "ABSOLUTE FORMATTING RULE (no exceptions, overrides everything else):",
+    "Never use a dash of ANY kind in your output. No em dash, no en dash, no hyphen, no minus sign.",
+    "- Do NOT hyphenate compound words. Write 'cross functional', 'end to end', 'real time', 'AI assisted'.",
+    "- For ranges or spans, write 'X to Y' (e.g. '2021 to 2025', '3 to 5 years'), never 'X-Y'.",
+    "- For bullet lists, use '*' as the marker, never '-'.",
+    "- Use commas, colons, parentheses, or separate sentences where you would reach for a dash.",
+    "This rule is mandatory even inside code, quotes, names, and numbers.",
     "",
     "## System context (_shared.md)",
     shared,
@@ -153,6 +176,26 @@ export async function streamChat(
     stream.abort();
   });
 
+  // Buffer streamed text and flush whole lines, so the dash sanitizer can see a
+  // full line at a time (needed to preserve leading "- " bullet markers). The
+  // trailing partial line is held until a newline arrives or the stream ends.
+  let buffer = "";
+  const emit = (text: string) => {
+    if (text) res.write(`data: ${JSON.stringify({ type: "text", text })}\n\n`);
+  };
+  const flush = (final: boolean) => {
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      emit(stripDashesFromLine(line) + "\n");
+    }
+    if (final && buffer.length) {
+      emit(stripDashesFromLine(buffer));
+      buffer = "";
+    }
+  };
+
   try {
     for await (const event of stream) {
       if (aborted) break;
@@ -160,11 +203,13 @@ export async function streamChat(
         event.type === "content_block_delta" &&
         event.delta.type === "text_delta"
       ) {
-        res.write(`data: ${JSON.stringify({ type: "text", text: event.delta.text })}\n\n`);
+        buffer += event.delta.text;
+        flush(false);
       }
     }
 
     if (!aborted) {
+      flush(true);
       res.write("data: [DONE]\n\n");
     }
   } catch (err) {
