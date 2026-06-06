@@ -579,7 +579,11 @@
      ------------------------------------------------------------------ */
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .job, .section { break-inside: avoid; page-break-inside: avoid; }
+    /* Keep each job entry intact, but let long sections (Experience) flow
+       across a page break instead of jumping whole to the next page and
+       leaving a void after the section before them (e.g. Certifications). */
+    .job { break-inside: avoid; page-break-inside: avoid; }
+    .section { break-inside: auto; page-break-inside: auto; }
   }
 </style>
 </head>
