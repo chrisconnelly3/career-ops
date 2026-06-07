@@ -37,7 +37,7 @@ Oct 2025 – Present
 - Sole product designer for Finite State's hardware and device security platform, owning end-to-end UX across the entire application alongside 3 PMs and ~12 engineers.
 - Designed an agentic Copilot for Assurance Studio that triages security vulnerabilities in bulk, matching a skilled reviewer's judgment on CVE severity and remediation priority in a fraction of the manual time and freeing security engineers and compliance officers from repetitive one-by-one CVE review; built around two interaction modes, an open-ended chat and quick actions the agent runs on the user's behalf, both context-aware of the user's current page so the assistant feels native rather than bolted on. Now in alpha with external partners, with positive early feedback from internal teams and partners.
 - Designed for a trust barrier unique to security personas, who will not act on AI output they cannot verify: added a "run details" view exposing the exact customer source data behind each agent recommendation and the reasoning for it, making every result traceable and auditable rather than a black box.
-- Architected the design system for Assurance Studio (Finite State's next-gen product), shipping 65+ components across 5 atomic layers with a custom in-house Storybook as the engineering team's visual source of truth.
+- Architected Hexline, the design system for Assurance Studio (Finite State's next-gen product), shipping 65+ components across 5 atomic layers with a custom in-house Storybook as the engineering team's visual source of truth.
 - Pioneered Finite State's first agent-readable design source-of-truth, optimizing component documentation so the ~12 engineers using AI coding assistants daily face zero ambiguity on component selection across Assurance Studio.
 - Built /buildtopr, a Cursor agent skill that automates the full Jira-ticket-to-merged-PR lifecycle; used it during an engineering stint to ship ~50 frontend tickets in 5 months as the sole non-engineer, outpacing every individual engineer on the team.
 - Authored 10+ roadmap and design-research pitch documents in Notion beyond the typical IC remit, with roughly 5 landing as shipped engineering work or active commitments including Nightly Updates Control, Edit Component v2, and the merged-platform information architecture.
@@ -118,6 +118,7 @@ Founder, Designer-Developer Hybrid, 2013 to Present (Remote)
 - WCAG / ARIA accessibility
 - Cognitive / behavioral laws (Jakob's Law, Gestalt groupings, usability heuristics)
 - Design thinking
+- Emotional design (designing for how an experience feels, not just whether it works)
 - Agile
 
 ### UX Design
